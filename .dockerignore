@@ -1,0 +1,8 @@
+.db/
+deploy/
+.mypy_cache/
+.pytest_cache/
+go-logs/
+media/
+go.log
+.venv

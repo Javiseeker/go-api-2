@@ -1,0 +1,15 @@
+{% load custom_tags %}
+<html>
+    <body>
+        <div class="img text-left">
+            <img height="40" border="0"
+                src="{{ 'images/logo/go-logo.png' | static_full_path }}"
+                alt="Logo: International Federation of Red Cross and Red Crescent Societies"
+                style="-ms-interpolation-mode:bicubic;"
+            />
+        </div>
+        SITUATIONAL OVERVIEW
+        <p style = "font-weight:300;">{{situational_overview|safe}}</p>
+        <p>The full report can be downloaded here:<a href="{{ document_url }}">{{ document_url }}</a></p>
+    </body>
+</html>

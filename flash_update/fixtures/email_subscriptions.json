@@ -1,0 +1,9 @@
+[
+    {
+        "model": "flash_update.flashemailsubscriptions",
+        "pk": 1,
+        "fields": {
+            "share_with": "ifrc_secretariat"
+        }
+    }
+]

@@ -1,0 +1,88 @@
+[
+    {
+        "model": "local_units.LocalUnitLevel",
+        "pk": "1",
+        "fields": {
+            "level": 0,
+            "name": "National"
+        }
+    },
+    {
+        "model": "local_units.LocalUnitLevel",
+        "pk": "2",
+        "fields": {
+            "level": 1,
+            "name": "Subnational"
+        }
+    },
+    {
+        "model": "local_units.LocalUnitLevel",
+        "pk": "3",
+        "fields": {
+            "level": 2,
+            "name": "District/Regional"
+        }
+    },
+    {
+        "model": "local_units.LocalUnitLevel",
+        "pk": "4",
+        "fields": {
+            "level": 3,
+            "name": "Local"
+        }
+    },
+    {
+        "model": "local_units.LocalUnitType",
+        "pk": "1",
+        "fields": {
+            "code": 1,
+            "name": "Administrative",
+            "colour": "#f5333f"
+        }
+    },
+    {
+        "model": "local_units.LocalUnitType",
+        "pk": "2",
+        "fields": {
+            "code": 2,
+            "name": "Health Care",
+            "colour": "#011e41"
+        }
+    },
+    {
+        "model": "local_units.LocalUnitType",
+        "pk": "3",
+        "fields": {
+            "code": 3,
+            "name": "Emergency Response",
+            "colour": "#ff8000"
+        }
+    },
+    {
+        "model": "local_units.LocalUnitType",
+        "pk": "4",
+        "fields": {
+            "code": 4,
+            "name": "Humanitarian Assistance Centres",
+            "colour": "#b68fba"
+        }
+    },
+    {
+        "model": "local_units.LocalUnitType",
+        "pk": "5",
+        "fields": {
+            "code": 5,
+            "name": "Training and Education",
+            "colour": "#97b8c2"
+        }
+    },
+    {
+        "model": "local_units.LocalUnitType",
+        "pk": "6",
+        "fields": {
+            "code": 6,
+            "name": "Other",
+            "colour": "#a5a5a5"
+        }
+    }
+]

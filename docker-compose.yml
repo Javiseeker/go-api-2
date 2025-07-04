@@ -1,0 +1,255 @@
+# NOTE: Used Only for local development
+
+x-server: &base_server_setup
+  build:
+    context: .
+    tags:
+     - ifrcgo/go-api:latest
+  # To attach to container with stdin `docker attach <container_name>`
+  # Used for python debugging.
+  stdin_open: true
+  tty: true
+  environment:
+    # Overwrite this using .env (for additional configuration, look at main/settings.py:env
+    # Database (from db.environment)
+    DJANGO_DB_HOST: ${DJANGO_DB_HOST:-db}
+    DJANGO_DB_NAME: ${DJANGO_DB_NAME:-test}
+    DJANGO_DB_USER: ${DJANGO_DB_USER:-test}
+    DJANGO_DB_PASS: ${DJANGO_DB_PASS:-test}
+    # Other development defaults configs
+    DJANGO_DEBUG: ${DJANGO_DEBUG:-true}
+    GO_ENVIRONMENT: ${GO_ENVIRONMENT:-development}
+    API_FQDN: ${API_FQDN:-http://localhost:8000}
+    FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+    PLAYWRIGHT_SERVER_URL: ${PLAYWRIGHT_SERVER_URL:-ws://playwright:3000/}
+    GO_WEB_INTERNAL_URL: ${GO_WEB_INTERNAL_URL:-http://host.docker.internal:3000}
+    DJANGO_ADDITIONAL_ALLOWED_HOSTS: ${DJANGO_ADDITIONAL_ALLOWED_HOSTS:-host.docker.internal}
+    DEBUG_EMAIL: ${DEBUG_EMAIL:-true}
+    MOLNIX_API_BASE: ${MOLNIX_API_BASE:-https://api.ifrc-staging.rpm.molnix.com/api/}
+    ERP_API_ENDPOINT: ${ERP_API_ENDPOINT:-https://ifrctintapim001.azure-api.net/GoAPI/ExtractGoEmergency}
+    ERP_API_SUBSCRIPTION_KEY: ${ERP_API_SUBSCRIPTION_KEY:-abcdef}
+    CELERY_REDIS_URL: ${CELERY_REDIS_URL:-redis://redis:6379/0}
+    CACHE_REDIS_URL: ${CACHE_REDIS_URL:-redis://redis:6379/1}
+    CACHE_TEST_REDIS_URL: ${CACHE_TEST_REDIS_URL:-redis://redis:6379/11}
+    CACHE_MIDDLEWARE_SECONDS: ${CACHE_MIDDLEWARE_SECONDS:-600}
+    ELASTIC_SEARCH_HOST: ${ELASTIC_SEARCH_HOST:-elasticsearch://elasticsearch:9200}
+    # Appeal API
+    APPEALS_USER: ${APPEALS_USER:-}
+    APPEALS_PASS: ${APPEALS_PASS:-}
+    # Sentry
+    SENTRY_DSN: ${SENTRY_DSN:-}
+    SENTRY_SAMPLE_RATE: ${SENTRY_SAMPLE_RATE:-0.2}
+    # Maintenance mode
+    DJANGO_READ_ONLY: ${DJANGO_READ_ONLY:-false}
+    # DB resources
+    RESOURCES_DB_SERVER: ${RESOURCES_DB_SERVER:-}
+    RESOURCES_DB_NAME: ${RESOURCES_DB_NAME:-}
+    # Region
+    REGION: ${REGION:-}
+    # IFRC dynamic translation
+    AUTO_TRANSLATION_TRANSLATOR: ${AUTO_TRANSLATION_TRANSLATOR:-}
+    IFRC_TRANSLATION_DOMAIN: ${IFRC_TRANSLATION_DOMAIN:-}
+    IFRC_TRANSLATION_HEADER_API_KEY: ${IFRC_TRANSLATION_HEADER_API_KEY:-}
+  extra_hosts:
+      - "host.docker.internal:host-gateway"
+  env_file:
+    - .env
+  volumes:
+    - '.:/home/ifrc/go-api'
+  depends_on:
+    - db
+    - redis
+    - elasticsearch
+    - playwright
+
+services:
+  db:
+    image: postgis/postgis:15-3.4-alpine
+    ports:
+      - "5432:5432" 
+    environment:
+      POSTGRES_PASSWORD: test
+      POSTGRES_USER: test
+      POSTGRES_DB: test
+    volumes:
+      - './.db/pg-15:/var/lib/postgresql/data'
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  redis:
+    image: redis:latest
+    volumes:
+      - redis-data:/data
+
+  # NOTE: Make sure this matches with pyproject playwright dependency and helm
+  playwright:
+    image: mcr.microsoft.com/playwright:v1.50.0-noble
+    working_dir: /home/pwuser
+    user: pwuser
+    command: >
+      bash -xc "
+        PLAYWRIGHT_VERSION=$(cat /ms-playwright/.docker-info | grep -oP '\"driverVersion\": \"\\K[^\"]+')
+        npx -y playwright@$$PLAYWRIGHT_VERSION run-server --port 3000 --host 0.0.0.0
+      "
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.0.0
+    container_name: elasticsearch
+    environment:
+      - cluster.name=docker-cluster
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - http.cors.enabled=true
+      - http.cors.allow-origin=*
+      - discovery.type=single-node
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - elastic-search-data:/usr/share/elasticsearch/data
+    ports:
+      - 9200:9200
+
+  kibana:
+    image: 'docker.elastic.co/kibana/kibana:7.0.0'
+    container_name: kibana
+    environment:
+      SERVER_NAME: kibana.local
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+    ports:
+      - '5601:5601'
+    depends_on:
+      - elasticsearch
+    profiles: [elasticsearch]
+
+  serve:
+    <<: *base_server_setup
+    ports:
+      - 8000:8000
+    command: python manage.py runserver 0.0.0.0:8000
+
+  # For development only
+  celery:
+    <<: *base_server_setup
+    command: python manage.py run_celery_dev
+
+  # ------------------ Helper CLI Commands
+  # Usage: `docker compose run --rm <service-name>`
+  # Example: `docker compose run --rm bash`
+  bash:
+    <<: *base_server_setup
+    entrypoint: /bin/bash
+    profiles: [cli]
+
+  shell:
+    <<: *base_server_setup
+    command: python manage.py shell
+    profiles: [cli]
+
+  loaddata:
+    <<: *base_server_setup
+    command: python manage.py loaddata Regions Countries Districts DisasterTypes Actions Groups
+    profiles: [cli]
+
+  ingest_databank:
+    <<: *base_server_setup
+    command: python manage.py ingest_databank
+    profiles: [cli]
+
+  collectstatic:
+    <<: *base_server_setup
+    command: python manage.py collectstatic --noinput -l
+    profiles: [cli]
+
+  createsuperuser:
+    <<: *base_server_setup
+    command: python manage.py createsuperuser
+    profiles: [cli]
+
+  ingest_appeals:
+    <<: *base_server_setup
+    command: python manage.py ingest_appeals
+    profiles: [cli]
+
+  ingest_appeal_docs:
+    <<: *base_server_setup
+    command: python manage.py ingest_appeal_docs
+    profiles: [cli]
+
+  user_registration_reminder:
+    <<: *base_server_setup
+    command: python manage.py user_registration_reminder
+    profiles: [cli]
+
+  ingest_appeal_docs_fullscan:
+    <<: *base_server_setup
+    command: python manage.py ingest_appeal_docs --fullscan
+    profiles: [cli]
+
+  ingest_mdb:
+    <<: *base_server_setup
+    command: python manage.py ingest_mdb
+    profiles: [cli]
+
+  migrate:
+    <<: *base_server_setup
+    command: python manage.py migrate
+    profiles: [cli]
+
+  makemigrations:
+    <<: *base_server_setup
+    command: python manage.py makemigrations
+    profiles: [cli]
+
+  makemigrations_merge:
+    <<: *base_server_setup
+    command: python manage.py makemigrations --merge
+    profiles: [cli]
+
+  make_permissions:
+    <<: *base_server_setup
+    command: python manage.py make_permissions
+    profiles: [cli]
+
+  test:
+    <<: *base_server_setup
+    command: pytest --durations=10
+    profiles: [cli]
+
+  test_snapshot_update:
+    <<: *base_server_setup
+    command: python manage.py test -k --snapshot-update
+    profiles: [cli]
+
+  testr:
+    <<: *base_server_setup
+    command: pytest --reuse-db --durations=10 -s
+    profiles: [cli]
+
+  coverage:
+    <<: *base_server_setup
+    command: coverage run --source='.' manage.py test -k
+    profiles: [cli]
+
+  coverage_report:
+    <<: *base_server_setup
+    command: coverage report
+    profiles: [cli]
+
+  coverage_html:
+    <<: *base_server_setup
+    command: coverage html
+    profiles: [cli]
+
+  triggers_to_db:
+    <<: *base_server_setup
+    command: python manage.py triggers_to_db
+    profiles: [cli]
+
+
+volumes:
+  redis-data:
+  elastic-search-data:

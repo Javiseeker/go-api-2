@@ -1,0 +1,800 @@
+  <!-- Main -->
+{% load humanize %}{% load custom_filters %}{% lineless %}
+
+{% if records|length %}
+  {% for fr in records %}
+    <table width="100%" border="0" cellspacing="0" cellpadding="0" bgcolor="#ffffff">
+      <tr>
+        <td align="center" class="pb-30" style="padding-bottom:30px;">
+          <table width="650" border="0" cellspacing="0" cellpadding="0" class="mobile-shell">
+            <tr>
+              <td class="td td-shell" style="width: 650px;min-width: 650px;padding: 0;margin: 0;">
+                <table width="100%" border="0" cellspacing="0" cellpadding="0">
+                  <tr>
+                    <td class="text-center text-default pb-25" style="padding-bottom: 25px;text-align: center;">
+                      <span class="table-heading-main" style="font-weight: bold;font-size: 24px;">New Field Report: </span>
+                      <span class="table-heading-sub" style="font-size: 24px;">{{ fr.title }}</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="text-default table-heading-title pt-10 pb-10" style="padding-top: 10px;padding-bottom: 10px;text-transform: uppercase;font-weight: bold;">Description</td>
+                  </tr>
+                  {% if fr.description %}
+                  <tr>
+                    <td class="text-default text-light pb-20" style="padding-bottom: 20px;font-weight: 300;">
+                      {% autoescape off %}{{ fr.description }}{% endautoescape %}
+                    </td>
+                  </tr>
+                  {% endif %}
+                  <tr>
+                    <td class="bp-20" style="padding-bottom: 20px">
+                      <table cellpadding="4">
+                      {% if fr.other_fields.start_date %}
+                          <tr>
+                              <td align="left" class="text-default text-light" style="font-weight: bold;white-space: nowrap">
+                                  Start date:
+                              </td>
+                              <td align="left" class="text-default text-light">
+                                  {{ fr.other_fields.start_date|date:"Y-m-d" }} </td>
+                          </tr>
+                      {% endif %}
+                      {% if fr.other_fields.countries %}
+                          <tr>
+                              <td align="left" class="text-default text-light" style="font-weight: bold;white-space: nowrap">
+                                  Affected Country:
+                              </td>
+                              <td align="left" class="text-default text-light">
+                                  {{ fr.other_fields.countries }} </td>
+                          </tr>
+                      {% endif %}
+                      {% if fr.other_fields.districts %}
+                          <tr>
+                              <td align="left" class="text-default text-light" style="font-weight: bold;white-space: nowrap">
+                                  Province / Region:
+                              </td>
+                              <td align="left" class="text-default text-light">
+                                  {{ fr.other_fields.districts }} </td>
+                          </tr>
+                      {% endif %}
+                      {% if fr.other_fields.event.name %}
+                          <tr>
+                              <td align="left" class="text-default text-light" style="font-weight: bold;white-space: nowrap">
+                                  Related Emergency:
+                              </td>
+                              <td align="left" class="text-default text-light">
+                                  {{ fr.other_fields.event.name }} </td>
+                          </tr>
+                      {% endif %}
+                      </table>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="td text-default box box-pointed" style="color: #000000;font-family:'Lato', Arial, sans-serif;border: 1px solid #888;padding: 12px;border-radius: 20px;border-top-left-radius: 0;">
+                      <table width="100%" border="0" cellspacing="0" cellpadding="10" class="pb-30" style="padding-bottom: 30px;">
+                        <tr>
+                          <td class="text-default table-heading-title pt-10 pb-20" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-top: 10px;padding-bottom: 20px;text-transform: uppercase;font-weight: bold;">
+                            Key Figures {% if fr.sit_fields_date %}({{ fr.sit_fields_date|date:"F j, Y" }}){% endif %}
+                          </td>
+                        </tr>
+                        <!-- if NOT EPI () type Field Report -->
+                        {% if fr.dtype_id != 1 %}
+                          {% if fr.key_figures.affected %}
+                            <tr>
+                              <td class="text-default text-light text-uppercase pl-20" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-left: 20px;text-transform: uppercase;font-weight: 300;">Affected</td>
+                              <td class="text-default text-bold pr-20" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-right: 20px;font-weight: 700;">
+                                {{ fr.key_figures.affected|floatformat:"1"|intcomma|slice:":-2" }}
+                              </td>
+                            </tr>
+                          {% endif %}
+                          {% if fr.key_figures.injured %}
+                            <tr>
+                              <td class="text-default text-light text-uppercase pl-20" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-left: 20px;text-transform: uppercase;font-weight: 300;">Injured</td>
+                              <td class="text-default text-bold pr-20" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-right: 20px;font-weight: 700;">
+                                {{ fr.key_figures.injured|floatformat:"1"|intcomma|slice:":-2" }}
+                              </td>
+                            </tr>
+                          {% endif %}
+                          {% if fr.key_figures.dead %}
+                            <tr>
+                              <td class="text-default text-light text-uppercase pl-20" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-left: 20px;text-transform: uppercase;font-weight: 300;">Dead</td>
+                              <td class="text-default text-bold pr-20" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-right: 20px;font-weight: 700;">
+                                {{ fr.key_figures.dead|floatformat:"1"|intcomma|slice:":-2" }}
+                              </td>
+                            </tr>
+                          {% endif %}
+                          {% if fr.key_figures.missing %}
+                            <tr>
+                              <td class="text-default text-light text-uppercase pl-20" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-left: 20px;text-transform: uppercase;font-weight: 300;">Missing</td>
+                              <td class="text-default text-bold pr-20" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-right: 20px;font-weight: 700;">
+                                {{ fr.key_figures.missing|floatformat:"1"|intcomma|slice:":-2" }}
+                              </td>
+                            </tr>
+                          {% endif %}
+                          {% if fr.key_figures.displaced %}
+                            <tr>
+                              <td class="text-default text-light text-uppercase pl-20" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-left: 20px;text-transform: uppercase;font-weight: 300;">Displaced</td>
+                              <td class="text-default text-bold pr-20" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-right: 20px;font-weight: 700;">
+                                {{ fr.key_figures.displaced|floatformat:"1"|intcomma|slice:":-2" }}
+                              </td>
+                            </tr>
+                          {% endif %}
+                          {% if fr.key_figures.assisted %}
+                            <tr>
+                              <td class="text-default text-light text-uppercase pl-20" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-left: 20px;text-transform: uppercase;font-weight: 300;">Assisted</td>
+                              <td class="text-default text-bold pr-20" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-right: 20px;font-weight: 700;">
+                                {{ fr.key_figures.assisted|floatformat:"1"|intcomma|slice:":-2" }}
+                              </td>
+                            </tr>
+                          {% endif %}
+                        {% else %} <!-- If EPI Field Report -->
+                          {% if fr.epi_key_figures.epi_cases %}
+                            <tr>
+                              <td class="text-default text-light text-uppercase pl-20" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-left: 20px;text-transform: uppercase;font-weight: 300;">Cases:</td>
+                              <td class="text-default text-bold pr-20" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-right: 20px;font-weight: 700;">
+                                {{ fr.epi_key_figures.epi_cases|floatformat:"1"|intcomma|slice:":-2" }}
+                              </td>
+                            </tr>
+                          {% endif %}
+                          {% if fr.epi_key_figures.epi_suspected %}
+                            <tr>
+                              <td class="text-default text-light text-uppercase pl-20" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-left: 20px;text-transform: uppercase;font-weight: 300;">Suspected:</td>
+                              <td class="text-default text-bold pr-20" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-right: 20px;font-weight: 700;">
+                                {{ fr.epi_key_figures.epi_suspected|floatformat:"1"|intcomma|slice:":-2" }}
+                              </td>
+                            </tr>
+                          {% endif %}
+                          {% if fr.epi_key_figures.epi_probable %}
+                            <tr>
+                              <td class="text-default text-light text-uppercase pl-20" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-left: 20px;text-transform: uppercase;font-weight: 300;">Probable:</td>
+                              <td class="text-default text-bold pr-20" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-right: 20px;font-weight: 700;">
+                                {{ fr.epi_key_figures.epi_probable|floatformat:"1"|intcomma|slice:":-2" }}
+                              </td>
+                            </tr>
+                          {% endif %}
+                          {% if fr.epi_key_figures.epi_confirmed %}
+                            <tr>
+                              <td class="text-default text-light text-uppercase pl-20" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-left: 20px;text-transform: uppercase;font-weight: 300;">Confirmed:</td>
+                              <td class="text-default text-bold pr-20" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-right: 20px;font-weight: 700;">
+                                {{ fr.epi_key_figures.epi_confirmed|floatformat:"1"|intcomma|slice:":-2" }}
+                              </td>
+                            </tr>
+                          {% endif %}
+                          {% if fr.epi_key_figures.epi_dead %}
+                            <tr>
+                              <td class="text-default text-light text-uppercase pl-20" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-left: 20px;text-transform: uppercase;font-weight: 300;">Dead:</td>
+                              <td class="text-default text-bold pr-20" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-right: 20px;font-weight: 700;">
+                                {{ fr.epi_key_figures.epi_dead|floatformat:"1"|intcomma|slice:":-2" }}
+                              </td>
+                            </tr>
+                          {% endif %}
+                          <tr>
+                            <td class="text-default text-light text-uppercase pl-20" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-left: 20px;text-transform: uppercase;font-weight: 300;font-size:15px;">
+                              Source:
+                              <span class="font-weight: 800;">{{ fr.epi_figures_source }}</span>
+                            </td>
+                          </tr>
+                        {% endif %}
+                        {% if fr.other_fields.epi_cases_since_last_fr %}
+                          <tr>
+                            <td class="text-default text-light text-uppercase pl-20" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-left: 20px;text-transform: uppercase;font-weight: 300;">CASES since last Field Report:</td>
+                            <td class="text-default text-bold pr-20" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-right: 20px;font-weight: 700;">
+                              {{ fr.other_fields.epi_cases_since_last_fr|floatformat:"1"|intcomma|slice:":-2" }}
+                            </td>
+                          </tr>
+                        {% endif %}
+                        {% if fr.other_fields.epi_deaths_since_last_fr %}
+                          <tr>
+                            <td class="text-default text-light text-uppercase pl-20" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-left: 20px;text-transform: uppercase;font-weight: 300;">DEATHS since last Field Report:</td>
+                            <td class="text-default text-bold pr-20" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-right: 20px;font-weight: 700;">
+                              {{ fr.other_fields.epi_deaths_since_last_fr|floatformat:"1"|intcomma|slice:":-2" }}
+                            </td>
+                          </tr>
+                        {% endif %}
+                      </table>
+                    </td>
+                  </tr>
+                  {% if fr.other_fields.epi_notes_since_last_fr %}
+                  <tr>
+                    <td class="text-default pt-30 pb-10" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-top: 30px;padding-bottom: 10px;font-weight: bold;">Notes</td>
+                  </tr>
+                  <tr>
+                    <td class="text-default text-light" style="color: #000000;font-family:'Lato', Arial, sans-serif;font-weight: 300;">
+                    {% for noteline in fr.other_fields.epi_notes_since_last_fr %}
+                        {% if forloop.counter0 %}<br/>{% endif %}{{ noteline }}
+                    {% endfor %}
+                    </td>
+                  </tr>
+                  {% endif %}
+                  {% if fr.other_fields.notes_health %}
+                  <tr>
+                    <td class="text-default pt-20 pb-10" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-top: 20px;padding-bottom: 10px;font-weight: bold;">Notes (health)</td>
+                  </tr>
+                  <tr>
+                    <td class="text-default text-light" style="color: #000000;font-family:'Lato', Arial, sans-serif;font-weight: 300;">
+                      {{ fr.other_fields.notes_health }}
+                    </td>
+                  </tr>
+                  {% endif %}
+                  {% if fr.other_fields.notes_ns %}
+                  <tr>
+                    <td class="text-default pt-20 pb-10" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-top: 20px;padding-bottom: 10px;font-weight: bold;">Notes (NS)</td>
+                  </tr>
+                  <tr>
+                    <td class="text-default text-light" style="color: #000000;font-family:'Lato', Arial, sans-serif;font-weight: 300;">
+                      {{ fr.other_fields.notes_ns }}
+                    </td>
+                  </tr>
+                  {% endif %}
+                  {% if fr.other_fields.notes_socioeco %}
+                  <tr>
+                    <td class="text-default pt-20 pb-10" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-top: 20px;padding-bottom: 10px;font-weight: bold;">Notes (socioeco.)</td>
+                  </tr>
+                  <tr>
+                    <td class="text-default text-light" style="color: #000000;font-family:'Lato', Arial, sans-serif;font-weight: 300;">
+                      {{ fr.other_fields.notes_socioeco }}
+                    </td>
+                  </tr>
+                  {% endif %}
+                  {% if fr.other_fields.other_sources %}
+                  <tr>
+                    <td class="text-default pt-20 pb-10" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-top: 20px;padding-bottom: 10px;font-weight: bold;">Source details</td>
+                  </tr>
+                  <tr>
+                    <td class="text-default text-light" style="color: #000000;font-family:'Lato', Arial, sans-serif;font-weight: 300;">
+                    {% for sourceline in fr.other_fields.other_sources %}
+                        {% if forloop.counter0 %}<br/>{% endif %}{{ sourceline }}
+                    {% endfor %}
+                    </td>
+                  </tr>
+                  {% endif %}
+                  <tr>
+                    <td class="text-default table-heading-title pt-20 pb-10" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-top: 20px;padding-bottom: 10px;text-transform: uppercase;font-weight: bold;">International Assistance Requested</td>
+                  </tr>
+                  <tr>
+                    <td class="text-default text-light" style="color: #000000;font-family:'Lato', Arial, sans-serif;font-weight: 300;">
+                      Government: {{ fr.gov_assistance }}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="text-default text-light" style="color: #000000;font-family:'Lato', Arial, sans-serif;font-weight: 300;">
+                      National Society: {{ fr.ns_assistance }}
+                    </td>
+                  </tr>
+                  {% if fr.other_fields.bulletin != 'No' %}
+                  <tr>
+                    <td class="text-default text-light pb-10" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-bottom: 10px;font-weight: 300;">
+                      Information Bulletin: {{ fr.other_fields.bulletin }}
+                    </td>
+                  </tr>
+                  {% endif %}
+                 <tr>
+                    <td class="text-default table-heading-title pt-20 pb-10" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-top: 20px;padding-bottom: 10px;text-transform: uppercase;font-weight: bold;">Actions Taken by National Society</td>
+                  </tr>
+                  {% for at in fr.actions_taken.NTLS %}
+                    {% for act in at.actions %}
+                      <tr class="table-annce" style="background: #f8f8f8;">
+                        <td class="text-default p-10" style="font-family:'Lato', Arial, sans-serif;padding: 10px;">{{ act.name }}</td>
+                      </tr>
+                    {% endfor %}
+                    <tr>
+                      <td class="text-default pt-10 pb-10" style="font-family:'Lato', Arial, sans-serif;padding-top: 10px;padding-bottom: 10px;">{{ at.action_summary }}</td>
+                    </tr>
+                  {% endfor %}
+                  <tr>
+                    <td class="text-default table-heading-title pt-20 pb-10" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-top: 20px;padding-bottom: 10px;text-transform: uppercase;font-weight: bold;">Actions Taken by IFRC</td>
+                  </tr>
+                  {% for at in fr.actions_taken.FDRN %}
+                    {% for act in at.actions %}
+                      <tr class="table-annce" style="background: #f8f8f8;">
+                        <td class="text-default p-10" style="font-family:'Lato', Arial, sans-serif;padding: 10px;">{{ act.name }}</td>
+                      </tr>
+                    {% endfor %}
+                    <tr>
+                      <td class="text-default pt-10 pb-10" style="font-family:'Lato', Arial, sans-serif;padding-top: 10px;padding-bottom: 10px;">{{ at.action_summary }}</td>
+                    </tr>
+                  {% endfor %}
+                  <tr>
+                    <td class="text-default table-heading-title pt-20 pb-10" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-top: 20px;padding-bottom: 10px;text-transform: uppercase;font-weight: bold;">Actions Taken by any other RCRC Movement actors</td>
+                  </tr>
+                  {% for at in fr.actions_taken.PNS %}
+                    {% for act in at.actions %}
+                      <tr class="table-annce" style="background: #f8f8f8;">
+                        <td class="text-default p-10" style="font-family:'Lato', Arial, sans-serif;padding: 10px;">{{ act.name }}</td>
+                      </tr>
+                    {% endfor %}
+                    <tr>
+                      <td class="text-default pt-10 pb-10" style="font-family:'Lato', Arial, sans-serif;padding-top: 10px;padding-bottom: 10px;">{{ at.action_summary }}</td>
+                    </tr>
+                  {% endfor %}
+                  {% if fr.actions_others or fr.other_fields.external_partners or fr.other_fields.supported_activities %}
+                  <tr>
+                    <td class="text-default table-heading-title pt-20 pb-10" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-top: 20px;padding-bottom: 10px;text-transform: uppercase;font-weight: bold;">Actions Taken by Others</td>
+                  </tr>
+                  {% endif %}
+                  {% if fr.actions_others %}
+                  <tr>
+                    <td class="text-default text-light pb-10" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-bottom: 10px;font-weight: 300;">
+                      {% for actionline in fr.actions_others %}
+                          {% if forloop.counter0 %}<br/>{% endif %}{{ actionline }}
+                      {% endfor %}
+                    </td>
+                  </tr>
+                  {% endif %}
+                  {% if fr.other_fields.external_partners %}
+                  <tr>
+                    <td class="text-default text-light pb-10" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-bottom: 10px;font-weight: 300;">
+                      <b>External partners:</b> &nbsp; {{ fr.other_fields.external_partners }} 
+                    </td>
+                  </tr>
+                  {% endif %}
+                  {% if fr.other_fields.supported_activities %}
+                  <tr>
+                    <td class="text-default text-light pb-10" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-bottom: 10px;font-weight: 300;">
+                      <b>Supported activities:</b> &nbsp; {{ fr.other_fields.supported_activities }}
+                    </td>
+                  </tr>
+                  {% endif %}
+                  <tr>
+                    <td class="text-default table-heading-title pt-20 pb-10" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-top: 20px;padding-bottom: 10px;text-transform: uppercase;font-weight: bold;">Response</td>
+                  </tr>
+                  <tr>
+                    <td class="text-default table-heading-title pb-10" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-bottom: 10px;text-transform: uppercase;font-weight: bold;">Planned Interventions</td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <table width="100%" border="0" cellspacing="0" cellpadding="6" bgcolor="#ffffff" style="font-family: 'Lato', Arial, sans-serif">
+                          {% if fr.other_fields.dref != 'No' %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold" width="30%">
+                                      DREF Request
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.dref }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.dref_amount %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      Initial CHF estimate
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.dref_amount|floatformat:"1"|intcomma|slice:":-2" }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.imminent_dref != 'No' %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold" width="30%">
+                                      Imminent DREF
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.imminent_dref }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.imminent_dref_amount %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      Initial CHF estimate
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.imminent_dref_amount|floatformat:"1"|intcomma|slice:":-2" }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.eru_base_camp != 'No' %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      ERU Base Camp
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.eru_base_camp }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.eru_base_camp_units %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      ERU Base Camp Units
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.eru_base_camp_units|floatformat:"1"|intcomma|slice:":-2" }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.eru_basic_health_care != 'No' %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      ERU basic health care
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.eru_basic_health_care }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.eru_basic_health_care_units %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      ERU basic health care Units
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.eru_basic_health_care_units|floatformat:"1"|intcomma|slice:":-2" }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.eru_deployment_hospital != 'No' %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      ERU deployment Hospital
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.eru_deployment_hospital }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.eru_deployment_hospital_units %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      ERU deployment Hospital Units
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.eru_deployment_hospital_units|floatformat:"1"|intcomma|slice:":-2" }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.eru_it_telecom != 'No' %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      ERU IT Telecom
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.eru_it_telecom }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.eru_it_telecom_units %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      ERU IT Telecom Units
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.eru_it_telecom_units|floatformat:"1"|intcomma|slice:":-2" }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.eru_logistics != 'No' %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      ERU Logistics
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.eru_logistics }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.eru_logistics_units %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      ERU Logistics Units
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.eru_logistics_units|floatformat:"1"|intcomma|slice:":-2" }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.eru_referral_hospital != 'No' %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      ERU referral Hospital
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.eru_referral_hospital }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.eru_referral_hospital_units %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      ERU referral Hospital Units
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.eru_referral_hospital_units|floatformat:"1"|intcomma|slice:":-2" }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.eru_relief != 'No' %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      ERU Relief
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.eru_relief }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.eru_relief_units %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      ERU Relief Units
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.eru_relief_units|floatformat:"1"|intcomma|slice:":-2" }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.eru_water_sanitation_15 != 'No' %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      ERU water sanitation 15:
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.eru_water_sanitation_15 }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.eru_water_sanitation_15_units %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      ERU water sanitation 15 Units
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.eru_water_sanitation_15_units|floatformat:"1"|intcomma|slice:":-2" }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.eru_water_sanitation_20 != 'No' %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      ERU water sanitation 20
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.eru_water_sanitation_20 }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.eru_water_sanitation_20_units %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      ERU water sanitation 20 Units
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.eru_water_sanitation_20_units|floatformat:"1"|intcomma|slice:":-2" }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.eru_water_sanitation_40 != 'No' %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      ERU water sanitation 40
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.eru_water_sanitation_40 }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.eru_water_sanitation_40_units %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      ERU water sanitation 40 Units
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.eru_water_sanitation_40_units|floatformat:"1"|intcomma|slice:":-2" }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.forecast_based_action != 'No' %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      Forecast Based Action
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.forecast_based_action }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.forecast_based_action_amount %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      FBA amount
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.forecast_based_action_amount|floatformat:"1"|intcomma|slice:":-2" }} </td>
+                              </tr>
+                          {% endif %}
+{% comment %} 581 - 733
+                          {% if fr.other_fields.is_covid_report %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      COVID report?
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.is_covid_report }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.gov_affected_pop_centres %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      Affected pop. Centres (gov)
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.gov_affected_pop_centres|floatformat:"1"|intcomma|slice:":-2" }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.gov_num_highest_risk %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      Highest risk (gov)
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.gov_num_highest_risk|floatformat:"1"|intcomma|slice:":-2" }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.gov_num_potentially_affected %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      Potentially affected (gov)
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.gov_num_potentially_affected|floatformat:"1"|intcomma|slice:":-2" }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.num_expats_delegates %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      Partner Personnel
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.num_expats_delegates|floatformat:"1"|intcomma|slice:":-2" }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.num_fact %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      FACT
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.num_fact|floatformat:"1"|intcomma|slice:":-2" }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.num_highest_risk %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      Highest risk
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.num_highest_risk|floatformat:"1"|intcomma|slice:":-2" }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.num_ifrc_staff %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      IFRC Staff
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.num_ifrc_staff|floatformat:"1"|intcomma|slice:":-2" }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.affected_pop_centres %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      Affected pop. centres
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.affected_pop_centres|floatformat:"1"|intcomma|slice:":-2" }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.num_localstaff %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      Local Staff
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.num_localstaff|floatformat:"1"|intcomma|slice:":-2" }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.num_potentially_affected %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      Potentially affected
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.num_potentially_affected|floatformat:"1"|intcomma|slice:":-2" }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.rdrt %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      RDRT
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.rdrt }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.num_rdrt %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      RDRT
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.num_rdrt|floatformat:"1"|intcomma|slice:":-2" }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.num_volunteers %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      Volunteers
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.num_volunteers|floatformat:"1"|intcomma|slice:":-2" }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.other_affected_pop_centres %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      Affected pop. centres (other)
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.other_affected_pop_centres|floatformat:"1"|intcomma|slice:":-2" }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.other_num_highest_risk %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      Highest risk (other)
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.other_num_highest_risk|floatformat:"1"|intcomma|slice:":-2" }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.other_num_potentially_affected %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      Potentially affected (other)
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.other_num_potentially_affected|floatformat:"1"|intcomma|slice:":-2" }} </td>
+                              </tr>
+                          {% endif %}
+581 - 733 {% endcomment %}
+                          {% if fr.other_fields.appeal != 'No' %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold" width="30%">
+                                      Emergency Appeal
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.appeal }} </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.other_fields.appeal_amount %}
+                              <tr>
+                                  <td align="left" style="font-weight: bold">
+                                      Initial CHF estimate
+                                  </td>
+                                  <td align="left">
+                                      {{ fr.other_fields.appeal_amount|floatformat:"1"|intcomma|slice:":-2" }} </td>
+                              </tr>
+                          {% endif %}
+                      </table>
+                    </td>
+                  </tr>
+                  {% if fr.other_fields.contacts %}
+                  <tr>
+                    <td class="text-default table-heading-title pt-20 pb-10" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-top: 20px;padding-bottom: 10px;text-transform: uppercase;font-weight: bold;">Contacts</td>
+                  </tr>
+                  {% endif %}
+                  <tr>
+                    <td>
+                      <table width="100%" border="0" cellspacing="0" cellpadding="6" bgcolor="#ffffff" style="font-family: 'Lato', Arial, sans-serif">
+                          {% if fr.other_fields.contacts %}
+                              <tr>
+                                  <td align="left">
+                                  {% for contact in fr.other_fields.contacts %}
+                                      {% if forloop.counter0 %}<br/><br/>{% endif %}{% if contact.ctype %}<strong>{{ contact.ctype }} · </strong>{% endif %}{% if contact.name %}<strong>{{ contact.name }}</strong>, {% endif %}{% if contact.title %}{{ contact.title }}, {% endif %}{% if contact.email %}<a href="mailto:{{ contact.email }}">{{ contact.email }}</a>, {% endif %}{% if contact.phone %}{{ contact.phone }}{% endif %}
+                                  {% endfor %}
+                                  </td>
+                              </tr>
+                          {% endif %}
+                          {% if fr.visibility %}
+                              <tr>
+                                  <td align="left" class="pt-20 pb-10" style="padding-top: 20px;padding-bottom: 10px;white-space: nowrap;font-weight: bold">
+                                      This field report is visible to {{ fr.visibility }}
+                                  </td>
+                              </tr>
+                          {% endif %}
+                      </table>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="text-default td-global-font-style text-italic pt-20 pb-10" style="color: #000000;font-family:'Lato', Arial, sans-serif;padding-top: 20px;padding-bottom: 10px;font-style: italic;font-weight: 300;font-size: 18px;">
+                      You are receiving this update based on your selected preferences. <a href="https://go.ifrc.org/account#notifications" target="_blank" class="link" style="font-family: 'Lato', Arial, sans-serif;text-decoration: underline;color: #000;">
+                        Update your preferences
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  {% endfor %}
+{% endif %}
+{% endlineless %}
+  <!-- END Main -->
