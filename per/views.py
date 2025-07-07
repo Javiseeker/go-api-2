@@ -470,3 +470,25 @@ class LearningTypes(APIView):
     def get(cls, request):
         keys_labels = [{"key": i, "label": v} for i, v in LearningType.choices]
         return JsonResponse(keys_labels, safe=False)
+
+class HowAreYouAPI(APIView):
+    authentication_classes = (authentication.TokenAuthentication,)
+    permissions_classes = (permissions.IsAuthenticated,)
+
+    def get(self, request):
+        return JsonResponse({
+            "message": "How are you!",
+            "status": "ok",
+            "timestamp": get_now_str()
+        })
+
+    def post(self, request):
+        """
+        POST endpoint that can accept a name parameter for personalized greeting
+        """
+        name = request.data.get("name", "friend")
+        return JsonResponse({
+            "message": f"How are you, {name}!",
+            "status": "ok", 
+            "timestamp": get_now_str()
+        })
