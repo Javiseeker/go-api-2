@@ -472,8 +472,8 @@ class LearningTypes(APIView):
         return JsonResponse(keys_labels, safe=False)
 
 class HowAreYouAPI(APIView):
-    authentication_classes = (authentication.TokenAuthentication,)
-    permissions_classes = (permissions.IsAuthenticated,)
+    #authentication_classes = (authentication.TokenAuthentication,)
+    #permissions_classes = (permissions.IsAuthenticated,)
 
     def get(self, request):
         return JsonResponse({

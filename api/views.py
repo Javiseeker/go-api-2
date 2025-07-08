@@ -1065,3 +1065,9 @@ def logout_user(request):
     if request.method == "POST" and request.user.is_authenticated:
         logout(request)
     return redirect(reverse(settings.LOGIN_URL))
+
+class HowAreYouAPI(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, *args, **kwargs):
+        return Response({"message": "Hello, I'm alive!"})
