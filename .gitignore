@@ -25,7 +25,7 @@ db.sqlite3
 
 # local development files
 static
-URLs*
+# URLs*
 db.sqlite3-journal
 
 # test and coverage artifacts
