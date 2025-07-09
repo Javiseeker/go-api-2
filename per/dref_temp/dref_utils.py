@@ -1,9 +1,7 @@
-# per/dref_temp/dref_utils.py
-
 import json
 import os
 from pathlib import Path
-from typing import List, Dict, Optional, Union, Any, Literal
+from typing import List, Dict, Optional, Union, Any, Literal, Iterator
 from datetime import datetime
 from collections import defaultdict
 
@@ -27,6 +25,8 @@ class DREFFilters:
         self.event_date_from: Optional[str] = kwargs.get('event_date_from')
         self.event_date_to: Optional[str] = kwargs.get('event_date_to')
         self.status: Optional[int] = kwargs.get('status')
+        
+        self.event_map_file_id: Optional[int] = kwargs.get('event_map_file_id')
         
         # Disaster and location filters
         self.disaster_type_id: Optional[int] = kwargs.get('disaster_type_id')
@@ -268,6 +268,127 @@ class DREFManager:
                 national_authorities=data.get('national_authorities')
             )
     
+    def _raw_item_matches_filters(self, item: Dict, filters: DREFFilters) -> bool:
+        """Check if raw JSON item matches filters (for memory optimization)"""
+        # This allows early filtering before full parsing
+        
+        # Basic filters
+        if filters.id and item.get('id') != filters.id:
+            return False
+        if filters.title and filters.title.lower() not in item.get('title', '').lower():
+            return False
+        if filters.appeal_code and item.get('appeal_code') != filters.appeal_code:
+            return False
+        if filters.status and item.get('status') != filters.status:
+            return False
+        
+        # Event map file filter
+        if filters.event_map_file_id:
+            event_map_file = item.get('event_map_file')
+            if not event_map_file or event_map_file.get('id') != filters.event_map_file_id:
+                return False
+        
+        # Country filters
+        country_details = item.get('country_details', {})
+        if filters.country_iso and country_details.get('iso') != filters.country_iso:
+            return False
+        if (filters.country_name and 
+            filters.country_name.lower() not in country_details.get('name', '').lower()):
+            return False
+        if filters.region and country_details.get('region') != filters.region:
+            return False
+        
+        # Disaster type filters
+        disaster_details = item.get('disaster_type_details', {})
+        if filters.disaster_type_id and disaster_details.get('id') != filters.disaster_type_id:
+            return False
+        if (filters.disaster_type_name and 
+            filters.disaster_type_name.lower() not in disaster_details.get('name', '').lower()):
+            return False
+        
+        # Scale filters
+        if (filters.min_people_affected and 
+            (item.get('number_of_people_affected') or 0) < filters.min_people_affected):
+            return False
+        if (filters.max_people_affected and 
+            (item.get('number_of_people_affected') or 0) > filters.max_people_affected):
+            return False
+        
+        # Budget filters
+        budget = item.get('total_dref_allocation') or item.get('amount_requested') or 0
+        if filters.min_budget and budget < filters.min_budget:
+            return False
+        if filters.max_budget and budget > filters.max_budget:
+            return False
+        
+        # Date filters
+        if filters.event_date_from and item.get('event_date', '') < filters.event_date_from:
+            return False
+        if filters.event_date_to and item.get('event_date', '') > filters.event_date_to:
+            return False
+        
+        # Boolean filters
+        if filters.is_published is not None and item.get('is_published') != filters.is_published:
+            return False
+        if (filters.emergency_appeal_planned is not None and 
+            item.get('emergency_appeal_planned') != filters.emergency_appeal_planned):
+            return False
+        
+        return True
+    
+    def _item_matches_filters(self, item: DREFData, filters: DREFFilters) -> bool:
+        """Check if parsed item matches filters (for complex filters)"""
+        # This handles filters that need parsed data
+        
+        # Event map file filter
+        if filters.event_map_file_id:
+            if not item.event_map_file or item.event_map_file.id != filters.event_map_file_id:
+                return False
+        
+        # District filter
+        if filters.district_name:
+            district_match = any(
+                filters.district_name.lower() in d.name.lower() 
+                for d in item.district_details
+            )
+            if not district_match:
+                return False
+        
+        # Classification filters
+        if filters.type_of_onset and item.type_of_onset != filters.type_of_onset:
+            return False
+        if filters.type_of_dref and item.type_of_dref != filters.type_of_dref:
+            return False
+        if filters.disaster_category and item.disaster_category != filters.disaster_category:
+            return False
+        
+        # Date range filters
+        if filters.created_from and item.created_at < filters.created_from:
+            return False
+        if filters.created_to and item.created_at > filters.created_to:
+            return False
+        if filters.modified_from and item.modified_at < filters.modified_from:
+            return False
+        if filters.modified_to and item.modified_at > filters.modified_to:
+            return False
+        
+        # Text search
+        if filters.search_text:
+            search_text = filters.search_text.lower()
+            search_fields = [
+                item.title,
+                getattr(item, 'event_description', '') or '',
+                getattr(item, 'event_scope', '') or '',
+                item.disaster_type_details.name,
+                item.country_details.name,
+                item.country_details.society_name
+            ]
+            
+            if not any(field and search_text in field.lower() for field in search_fields):
+                return False
+        
+        return True
+    
     def load_data(self, source: DREFDataSource) -> List[DREFData]:
         """Load data from specified JSON file"""
         if source in self._parsed_cache:
@@ -301,149 +422,58 @@ class DREFManager:
         self._parsed_cache[source] = parsed_data
         return parsed_data
     
+    def load_data_filtered(self, source: DREFDataSource, filters: DREFFilters) -> List[DREFData]:
+        """Load and filter data efficiently (parse only what passes initial filters)"""
+        filename = self._get_filename(source)
+        file_path = self.data_path / filename
+        
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                raw_data = json.load(f)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"DREF data file not found: {file_path}")
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in DREF file {filename}: {e}")
+        
+        filtered_data = []
+        
+        for item in raw_data:
+            # Quick filter on raw data first
+            if not self._raw_item_matches_filters(item, filters):
+                continue
+            
+            try:
+                # Parse only items that pass initial filters
+                parsed_item = self._parse_dref_data(item, source)
+                
+                # Apply more complex filters on parsed data
+                if self._item_matches_filters(parsed_item, filters):
+                    filtered_data.append(parsed_item)
+            except Exception:
+                # Skip invalid records silently
+                continue
+        
+        return filtered_data
+    
     def filter_data(self, data: List[DREFData], filters: DREFFilters) -> List[DREFData]:
         """Filter data based on provided criteria"""
         filtered_data = []
         
         for item in data:
-            # Apply filters
-            if filters.id and item.id != filters.id:
-                continue
-            if filters.title and filters.title.lower() not in item.title.lower():
-                continue
-            if filters.appeal_code and item.appeal_code != filters.appeal_code:
-                continue
-            if filters.event_date_from and item.event_date < filters.event_date_from:
-                continue
-            if filters.event_date_to and item.event_date > filters.event_date_to:
-                continue
-            if filters.status and item.status != filters.status:
-                continue
-            if filters.disaster_type_id and item.disaster_type_details.id != filters.disaster_type_id:
-                continue
-            if (filters.disaster_type_name and 
-                filters.disaster_type_name.lower() not in item.disaster_type_details.name.lower()):
-                continue
-            if filters.country_iso and item.country_details.iso != filters.country_iso:
-                continue
-            if (filters.country_name and 
-                filters.country_name.lower() not in item.country_details.name.lower()):
-                continue
-            if filters.district_name:
-                district_match = any(
-                    filters.district_name.lower() in d.name.lower() 
-                    for d in item.district_details
-                )
-                if not district_match:
-                    continue
-            if filters.region and item.country_details.region != filters.region:
-                continue
-            if filters.type_of_onset and item.type_of_onset != filters.type_of_onset:
-                continue
-            if filters.type_of_dref and item.type_of_dref != filters.type_of_dref:
-                continue
-            if filters.disaster_category and item.disaster_category != filters.disaster_category:
-                continue
-            if (filters.min_people_affected and 
-                item.number_of_people_affected < filters.min_people_affected):
-                continue
-            if (filters.max_people_affected and 
-                item.number_of_people_affected > filters.max_people_affected):
-                continue
-            
-            # Budget filters
-            budget = item.total_dref_allocation or getattr(item, 'amount_requested', 0) or 0
-            if filters.min_budget and budget < filters.min_budget:
-                continue
-            if filters.max_budget and budget > filters.max_budget:
-                continue
-            
-            # Date range filters
-            if filters.created_from and item.created_at < filters.created_from:
-                continue
-            if filters.created_to and item.created_at > filters.created_to:
-                continue
-            if filters.modified_from and item.modified_at < filters.modified_from:
-                continue
-            if filters.modified_to and item.modified_at > filters.modified_to:
-                continue
-            
-            # Boolean filters
-            if filters.is_published is not None and item.is_published != filters.is_published:
-                continue
-            if (filters.emergency_appeal_planned is not None and 
-                getattr(item, 'emergency_appeal_planned', None) != filters.emergency_appeal_planned):
-                continue
-            
-            # Text search
-            if filters.search_text:
-                search_text = filters.search_text.lower()
-                search_fields = [
-                    item.title,
-                    getattr(item, 'event_description', '') or '',
-                    getattr(item, 'event_scope', '') or '',
-                    item.disaster_type_details.name,
-                    item.country_details.name,
-                    item.country_details.society_name
-                ]
-                
-                if not any(field and search_text in field.lower() for field in search_fields):
-                    continue
-            
-            filtered_data.append(item)
+            if self._item_matches_filters(item, filters):
+                filtered_data.append(item)
         
         return filtered_data
     
     def get_data(self, source: DREFDataSource, filters: Optional[DREFFilters] = None) -> List[DREFData]:
         """Get data with optional filters applied"""
-        data = self.load_data(source)
-        
         if not filters:
-            return data
+            return self.load_data(source)
         
-        return self.filter_data(data, filters)
+        # Use efficient filtering if filters are provided
+        return self.load_data_filtered(source, filters)
     
-    def get_statistics(self, source: DREFDataSource, filters: Optional[DREFFilters] = None) -> Dict[str, Any]:
-        """Get statistics for a dataset"""
-        data = self.get_data(source, filters)
-        
-        stats = {
-            'total_operations': len(data),
-            'total_people_affected': 0,
-            'total_budget': 0,
-            'avg_people_affected': 0,
-            'avg_budget': 0,
-            'disaster_types': defaultdict(int),
-            'countries': defaultdict(int),
-            'by_year': defaultdict(int)
-        }
-        
-        for item in data:
-            stats['total_people_affected'] += item.number_of_people_affected or 0
-            
-            budget = item.total_dref_allocation or getattr(item, 'amount_requested', 0) or 0
-            stats['total_budget'] += budget
-            
-            stats['disaster_types'][item.disaster_type_details.name] += 1
-            stats['countries'][item.country_details.name] += 1
-            
-            try:
-                year = datetime.fromisoformat(item.event_date.replace('Z', '+00:00')).year
-                stats['by_year'][str(year)] += 1
-            except (ValueError, AttributeError):
-                pass
-        
-        # Calculate averages
-        if len(data) > 0:
-            stats['avg_people_affected'] = stats['total_people_affected'] / len(data)
-            stats['avg_budget'] = stats['total_budget'] / len(data)
-        
-        # Convert defaultdicts to regular dicts
-        stats['disaster_types'] = dict(stats['disaster_types'])
-        stats['countries'] = dict(stats['countries'])
-        stats['by_year'] = dict(stats['by_year'])
-        
-        return stats
+
     
     def get_unique_disaster_types(self, source: DREFDataSource) -> List[DisasterTypeDetails]:
         """Get unique disaster types from data"""

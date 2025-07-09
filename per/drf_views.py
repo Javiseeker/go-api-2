@@ -274,21 +274,41 @@ class PerOverviewViewSet(viewsets.ModelViewSet):
 class PerDrefStatusView(APIView):
     def get(self, request):
         event_id = request.query_params.get("id", None)
+
         if not event_id:
             return Response({"error": "Event ID is required"}, status=drf_status.HTTP_400_BAD_REQUEST)
+        
         try:
             # Check if the event exists using event_id
             event = EventAPIClient().get_event_detail(event_id)
             if not event:
                 return Response({"error": "Event not found"}, status=drf_status.HTTP_404_NOT_FOUND)
-            dref_sources = ["final-report", "op-update", "basic"]
-            dref_found = None
+            filter = DREFFilters()
+            filter.event_map_file_id = int(event_id)
+
+            matching_dref = dref_manager.get_data("basic", filters=filter)
+            print(f"Matching DREF records found: {len(matching_dref)}")
+            print(f"Event ID: {event_id}, Event Name: {event.get('name')}")
+
+            if len(matching_dref) == 0:
+                return Response({"error": "No DREF found for the given event ID"}, status=drf_status.HTTP_404_NOT_FOUND)
+            type_of_dref_display = matching_dref[0].type_of_dref_display 
+            type_of_onset_display = matching_dref[0].type_of_onset_display
+            print(f"Type of DREF: {type_of_dref_display}, Type of Onset: {type_of_onset_display}")
+
+            # dref_sources = ["final-report", "op-update", "basic"]
+            # dref_found = None
+            # return Response({
+            #     "event_id": event_id,
+            #     "event_name": event.get("name"),
+            #     "dref_found": dref_found,
+            #     "dref_sources": dref_sources
+            # })
             return Response({
-                "event_id": event_id,
-                "event_name": event.get("name"),
-                "dref_found": dref_found,
-                "dref_sources": dref_sources
-            })
+                "type_of_dref_display": type_of_dref_display,
+                "type_of_onset_display": type_of_onset_display,
+            }, status=drf_status.HTTP_200_OK)
+            # return f"{type_of_dref_display}|{type_of_onset_display}"
         except requests.RequestException as e:
             return Response({"error": str(e)}, status=drf_status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -309,11 +329,11 @@ class PerDrefLLMSummaryView(APIView):
     # Use Mustafa API key to prompt LLM summary using method
 
     def get(self, request):
-        event_id = request.query_params.get("id", None)
-        return Response({200: "DREF LLM Summary View is not implemented yet"})
-    
 
-        
+        # event_id = request.query_params.get("id", None)
+        # if not event_id:
+        #     return Response({"error": "Event ID is required"}, status=drf_status.HTTP_400_BAD_REQUEST)
+        return Response({200: "DREF LLM Summary View is not implemented yet"})
 
 class ExportPerView(views.APIView):
     permission_classes = [permissions.IsAuthenticated, DenyGuestUserPermission]
