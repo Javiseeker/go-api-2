@@ -229,6 +229,8 @@ urlpatterns = [
     url(r"^api/v2/event/(?P<slug>[-\w]+)", api_views.EventViewset.as_view({"get": "retrieve"}, lookup_field="slug")),
     url(r"^api/v2/delegation-office/(?P<pk>\d+)", DelegationOfficeDetailAPIView.as_view()),
     url(r"^api/v2/delegation-office/", DelegationOfficeListAPIView.as_view()),
+    url(r"^api/v2/per-dref-status/", per_views.PerDrefStatusView.as_view()),
+    url(r"^api/v2/per-dref-summary/", per_views.PerDrefLLMSummaryView.as_view()),
     url(r"^tinymce/", include("tinymce.urls")),
     url(r"^$", RedirectView.as_view(url="/admin")),
     # url(r'^', admin.site.urls),

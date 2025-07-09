@@ -291,6 +291,28 @@ class PerDrefStatusView(APIView):
             })
         except requests.RequestException as e:
             return Response({"error": str(e)}, status=drf_status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+   
+# Objective 2
+    # Object return two summaries, operational stratgies and overall objectives + all budgeting in DREF
+    # which can be shown in the frontend
+    # Two DREF summaries are returned
+    # Summary 1 - Data for two properties:
+    #   1. Overall objective of the operation 
+    #   2. Operation strategy rationale
+    # Summary 2 - Budgeting for DREF
+
+class PerDrefLLMSummaryView(APIView):
+    # Create DTO for Summary 1 and Summary 2
+    # Creating a use method to obtain data from DREF dump
+    # Use Mustafa API key to prompt LLM summary using method
+
+    def get(self, request):
+        event_id = request.query_params.get("id", None)
+        return Response({200: "DREF LLM Summary View is not implemented yet"})
+    
+
         
 
 class ExportPerView(views.APIView):
