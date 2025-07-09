@@ -1028,13 +1028,14 @@ class IFRCEventListView(views.APIView):
     def get(self, request):
         country = request.query_params.get('country')
         disaster_type = request.query_params.get('disaster_type')
+        
         if not country or not disaster_type:
             return Response(
                 {'detail': 'Both "country" and "disaster_type" query parameters are required.'},
                 status=drf_status.HTTP_400_BAD_REQUEST
             )
 
-        # ensure we have integer IDs
+        # Ensure we have integer IDs
         try:
             country_id = int(country)
             dtype_id = int(disaster_type)
@@ -1048,11 +1049,12 @@ class IFRCEventListView(views.APIView):
         params = {
             'country': country_id,
             'dtype': dtype_id,
+            'limit': 5,  # Request only 5 results from the API
         }
 
         try:
-            # use httpx with a 5 second timeout
-            with httpx.Client(timeout=5.0) as client:
+            # Use httpx with a 10 second timeout (increased for external API)
+            with httpx.Client(timeout=10.0) as client:
                 resp = client.get(api_url, params=params)
                 resp.raise_for_status()
         except httpx.RequestError as exc:
@@ -1066,5 +1068,19 @@ class IFRCEventListView(views.APIView):
                 status=drf_status.HTTP_502_BAD_GATEWAY
             )
 
-        data = resp.json().get('results', [])[:5]
-        return Response(data, status=drf_status.HTTP_200_OK)
+        try:
+            json_data = resp.json()
+        except ValueError:
+            return Response(
+                {'detail': 'Invalid JSON response from IFRC API.'},
+                status=drf_status.HTTP_502_BAD_GATEWAY
+            )
+
+        # Extract results from the API response
+        data = json_data.get('results', [])
+        
+        # Return the data with metadata
+        return Response({
+            'count': len(data),
+            'results': data
+        }, status=drf_status.HTTP_200_OK)
