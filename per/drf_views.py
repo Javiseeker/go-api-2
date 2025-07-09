@@ -1,6 +1,7 @@
 from datetime import datetime
 
 import pytz
+import httpx
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Count, F, Prefetch, Q
@@ -1013,3 +1014,57 @@ class PerDocumentUploadViewSet(viewsets.ModelViewSet):
         queryset = super().get_queryset()
         user = self.request.user
         return filter_per_queryset_by_user_access(user, queryset)
+
+# -------------------------------------------------------------------
+# implementation of flow - 1 
+# -------------------------------------------------------------------
+class IFRCEventListView(views.APIView):
+    """
+    GET /api/ifrc-events/?country=<int>&disaster_type=<int>
+    Fetches the top-5 events from the IFRC GO API filtered by country and disaster type.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        country = request.query_params.get('country')
+        disaster_type = request.query_params.get('disaster_type')
+        if not country or not disaster_type:
+            return Response(
+                {'detail': 'Both "country" and "disaster_type" query parameters are required.'},
+                status=drf_status.HTTP_400_BAD_REQUEST
+            )
+
+        # ensure we have integer IDs
+        try:
+            country_id = int(country)
+            dtype_id = int(disaster_type)
+        except ValueError:
+            return Response(
+                {'detail': '"country" and "disaster_type" must be integer IDs.'},
+                status=drf_status.HTTP_400_BAD_REQUEST
+            )
+
+        api_url = 'https://goadmin.ifrc.org/api/v2/event/'
+        params = {
+            'country': country_id,
+            'dtype': dtype_id,
+        }
+
+        try:
+            # use httpx with a 5 second timeout
+            with httpx.Client(timeout=5.0) as client:
+                resp = client.get(api_url, params=params)
+                resp.raise_for_status()
+        except httpx.RequestError as exc:
+            return Response(
+                {'detail': f'Error contacting IFRC API: {exc}'},
+                status=drf_status.HTTP_502_BAD_GATEWAY
+            )
+        except httpx.HTTPStatusError as exc:
+            return Response(
+                {'detail': f'IFRC API returned HTTP {exc.response.status_code}.'},
+                status=drf_status.HTTP_502_BAD_GATEWAY
+            )
+
+        data = resp.json().get('results', [])[:5]
+        return Response(data, status=drf_status.HTTP_200_OK)
