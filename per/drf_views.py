@@ -1,5 +1,12 @@
 from datetime import datetime
-
+from rest_framework.decorators import action
+from rest_framework.response import Response
+import requests
+from rest_framework import status
+from django.shortcuts import get_object_or_404
+from api.models import Event
+from per.dref_temp.dref_utils import dref_manager, DREFFilters
+from rest_framework.views import APIView
 import pytz
 from django.conf import settings
 from django.db import transaction
@@ -19,7 +26,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
-
+from per.event_api_client import EventAPIClient
 from api.models import Country, Region
 from deployments.models import SectorTag
 from main.permissions import DenyGuestUserMutationPermission, DenyGuestUserPermission
@@ -264,6 +271,27 @@ class PerOverviewViewSet(viewsets.ModelViewSet):
         queryset = Overview.objects.select_related("country", "user")
         return self.get_filtered_queryset(self.request, queryset, dispatch=0)
 
+class PerDrefStatusView(APIView):
+    def get(self, request):
+        event_id = request.query_params.get("id", None)
+        if not event_id:
+            return Response({"error": "Event ID is required"}, status=drf_status.HTTP_400_BAD_REQUEST)
+        try:
+            # Check if the event exists using event_id
+            event = EventAPIClient().get_event_detail(event_id)
+            if not event:
+                return Response({"error": "Event not found"}, status=drf_status.HTTP_404_NOT_FOUND)
+            dref_sources = ["final-report", "op-update", "basic"]
+            dref_found = None
+            return Response({
+                "event_id": event_id,
+                "event_name": event.get("name"),
+                "dref_found": dref_found,
+                "dref_sources": dref_sources
+            })
+        except requests.RequestException as e:
+            return Response({"error": str(e)}, status=drf_status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
 
 class ExportPerView(views.APIView):
     permission_classes = [permissions.IsAuthenticated, DenyGuestUserPermission]
