@@ -1,5 +1,5 @@
 from datetime import datetime
-
+from api.serializers import IfrcEventSummarySerializer
 import pytz
 import httpx
 from django.conf import settings
@@ -20,7 +20,6 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
-
 from api.models import Country, Region
 from deployments.models import SectorTag
 from main.permissions import DenyGuestUserMutationPermission, DenyGuestUserPermission
@@ -1019,24 +1018,16 @@ class PerDocumentUploadViewSet(viewsets.ModelViewSet):
 # implementation of flow - 1 
 # -------------------------------------------------------------------
 class IFRCEventListView(views.APIView):
-    """
-    GET /api/ifrc-events/?country=<int>&disaster_type=<int>
-    Fetches events and ops learning data from IFRC GO API, then joins them together
-    in a structured format filtered by country and disaster type.
-    """
-    # permission_classes = [IsAuthenticated]
-
     def get(self, request):
         country = request.query_params.get('country')
         disaster_type = request.query_params.get('disaster_type')
-        
+
         if not country or not disaster_type:
             return Response(
                 {'detail': 'Both "country" and "disaster_type" query parameters are required.'},
                 status=drf_status.HTTP_400_BAD_REQUEST
             )
 
-        # Ensure we have integer IDs
         try:
             country_id = int(country)
             dtype_id = int(disaster_type)
@@ -1046,7 +1037,6 @@ class IFRCEventListView(views.APIView):
                 status=drf_status.HTTP_400_BAD_REQUEST
             )
 
-        # Fetch events and ops learning data
         events_result = self._fetch_events(country_id, dtype_id)
         if 'error' in events_result:
             return Response(events_result, status=events_result.get('status', drf_status.HTTP_502_BAD_GATEWAY))
@@ -1055,111 +1045,60 @@ class IFRCEventListView(views.APIView):
         if 'error' in ops_learning_result:
             return Response(ops_learning_result, status=ops_learning_result.get('status', drf_status.HTTP_502_BAD_GATEWAY))
 
-        # Join the data together
         structured_data = self._join_events_and_learning(
             events_result.get('results', []),
             ops_learning_result.get('results', [])
         )
 
+        serialized = IfrcEventSummarySerializer(data=structured_data, many=True)
+        serialized.is_valid(raise_exception=True)
+        print("SUMMARY VALUES:", [d.get("summary") for d in structured_data])
         return Response({
             'country_id': country_id,
             'disaster_type_id': dtype_id,
             'total_events': len(events_result.get('results', [])),
             'total_ops_learning': len(ops_learning_result.get('results', [])),
-            'data': structured_data
+            'data': serialized.data
         }, status=drf_status.HTTP_200_OK)
 
     def _fetch_events(self, country_id, dtype_id):
-        """Fetch events from IFRC events API"""
         api_url = 'https://goadmin.ifrc.org/api/v2/event/'
-        params = {
-            'country': country_id,
-            'dtype': dtype_id,
-            'limit': 5,
-        }
+        params = {'country': country_id, 'dtype': dtype_id, 'limit': 5}
 
         try:
             with httpx.Client(timeout=10.0) as client:
                 resp = client.get(api_url, params=params)
                 resp.raise_for_status()
-        except httpx.RequestError as exc:
+            return {'results': resp.json().get('results', [])}
+        except (httpx.RequestError, httpx.HTTPStatusError, ValueError) as exc:
             return {
                 'error': True,
-                'detail': f'Error contacting IFRC Events API: {exc}',
+                'detail': f'Error fetching events: {exc}',
                 'status': drf_status.HTTP_502_BAD_GATEWAY
             }
-        except httpx.HTTPStatusError as exc:
-            return {
-                'error': True,
-                'detail': f'IFRC Events API returned HTTP {exc.response.status_code}.',
-                'status': drf_status.HTTP_502_BAD_GATEWAY
-            }
-
-        try:
-            json_data = resp.json()
-        except ValueError:
-            return {
-                'error': True,
-                'detail': 'Invalid JSON response from IFRC Events API.',
-                'status': drf_status.HTTP_502_BAD_GATEWAY
-            }
-
-        return {
-            'results': json_data.get('results', [])
-        }
 
     def _fetch_ops_learning(self, country_id, dtype_id):
-        """Fetch ops learning from IFRC ops-learning API"""
         api_url = 'https://goadmin.ifrc.org/api/v2/ops-learning/'
-        params = {
-            # 'countries': country_id,
-            'dtype': dtype_id,
-            'limit': 5,
-            'is_validated': 'true',  # Only get validated entries
-        }
+        params = {'dtype': dtype_id, 'limit': 5, 'is_validated': 'true'}
 
         try:
             with httpx.Client(timeout=10.0) as client:
                 resp = client.get(api_url, params=params)
                 resp.raise_for_status()
-        except httpx.RequestError as exc:
+            return {'results': resp.json().get('results', [])}
+        except (httpx.RequestError, httpx.HTTPStatusError, ValueError) as exc:
             return {
                 'error': True,
-                'detail': f'Error contacting IFRC Ops Learning API: {exc}',
+                'detail': f'Error fetching ops learning: {exc}',
                 'status': drf_status.HTTP_502_BAD_GATEWAY
             }
-        except httpx.HTTPStatusError as exc:
-            return {
-                'error': True,
-                'detail': f'IFRC Ops Learning API returned HTTP {exc.response.status_code}.',
-                'status': drf_status.HTTP_502_BAD_GATEWAY
-            }
-
-        try:
-            json_data = resp.json()
-        except ValueError:
-            return {
-                'error': True,
-                'detail': 'Invalid JSON response from IFRC Ops Learning API.',
-                'status': drf_status.HTTP_502_BAD_GATEWAY
-            }
-
-        return {
-            'results': json_data.get('results', [])
-        }
 
     def _join_events_and_learning(self, events, ops_learning):
-        """Join events and ops learning data into a structured format"""
-        
-        # Create a mapping of appeal codes to ops learning
         ops_learning_by_appeal = {}
         for learning in ops_learning:
             appeal_code = learning.get('appeal_code')
             if appeal_code:
-                if appeal_code not in ops_learning_by_appeal:
-                    ops_learning_by_appeal[appeal_code] = []
-                
-                ops_learning_by_appeal[appeal_code].append({
+                ops_learning_by_appeal.setdefault(appeal_code, []).append({
                     'id': learning.get('id'),
                     'learning_text': learning.get('learning_validated_en', learning.get('learning_en')),
                     'document_name': learning.get('document_name'),
@@ -1171,154 +1110,76 @@ class IFRCEventListView(views.APIView):
                     'modified_at': learning.get('modified_at')
                 })
 
-        # Structure the joined data
         structured_data = []
-        
         for event in events:
+            print("DEBUG RAW EVENT:", event)
             event_data = {
                 'event_id': event.get('id'),
                 'event_name': event.get('name'),
                 'event_slug': event.get('slug'),
-                'disaster_type': {
-                    'id': event.get('dtype'),
-                    'name': event.get('dtype_name')
-                },
-                'country': {
-                    'id': event.get('country'),
-                    'name': event.get('country_name')
-                },
+                'summary': f"{event.get('name', 'Unknown Event')} in {event.get('country_name', 'Unknown Country')} on {event.get('start_date', 'an unknown date')}",
+                'description': event.get('summary', ''),  # 👈 ADD THIS LINE
+                'disaster_type': {'id': event.get('dtype'), 'name': event.get('dtype_name')},
+                'country': {'id': event.get('country'), 'name': event.get('country_name')},
                 'start_date': event.get('start_date'),
-                'summary': event.get('summary'),
                 'num_affected': event.get('num_affected'),
                 'ifrc_severity_level': event.get('ifrc_severity_level'),
                 'appeals': [],
                 'related_ops_learning': []
             }
-            
-            # Add appeals and their associated ops learning
+
             appeals = event.get('appeals', [])
             for appeal in appeals:
-                appeal_code = appeal.get('code')
+                code = appeal.get('code')
                 appeal_data = {
                     'appeal_id': appeal.get('id'),
-                    'appeal_code': appeal_code,
+                    'appeal_code': code,
                     'appeal_name': appeal.get('name'),
                     'appeal_type': appeal.get('atype'),
                     'start_date': appeal.get('start_date'),
                     'end_date': appeal.get('end_date'),
                     'amount_requested': appeal.get('amount_requested'),
                     'amount_funded': appeal.get('amount_funded'),
-                    'ops_learning': ops_learning_by_appeal.get(appeal_code, [])
+                    'ops_learning': ops_learning_by_appeal.get(code, [])
                 }
                 event_data['appeals'].append(appeal_data)
-                
-                # Also add to the main ops learning section for easy access
-                if appeal_code in ops_learning_by_appeal:
-                    event_data['related_ops_learning'].extend(ops_learning_by_appeal[appeal_code])
+                if code in ops_learning_by_appeal:
+                    event_data['related_ops_learning'].extend(ops_learning_by_appeal[code])
 
-            # Remove duplicates from related_ops_learning
-            seen_learning_ids = set()
+            # De-duplicate learning entries
+            seen_ids = set()
             unique_learning = []
-            for learning in event_data['related_ops_learning']:
-                if learning['id'] not in seen_learning_ids:
-                    seen_learning_ids.add(learning['id'])
-                    unique_learning.append(learning)
+            for item in event_data['related_ops_learning']:
+                if item['id'] not in seen_ids:
+                    seen_ids.add(item['id'])
+                    unique_learning.append(item)
             event_data['related_ops_learning'] = unique_learning
 
             structured_data.append(event_data)
 
-        # Add any orphaned ops learning (not linked to any event)
-        orphaned_learning = []
-        all_linked_appeal_codes = set()
-        for event_data in structured_data:
-            for appeal in event_data['appeals']:
-                all_linked_appeal_codes.add(appeal['appeal_code'])
+        # Add orphaned ops learning
+        linked_codes = {a['appeal_code'] for e in structured_data for a in e['appeals']}
+        orphaned = []
+        for code, learnings in ops_learning_by_appeal.items():
+            if code not in linked_codes:
+                for l in learnings:
+                    l['appeal_code'] = code
+                    orphaned.append(l)
 
-        for appeal_code, learning_items in ops_learning_by_appeal.items():
-            if appeal_code not in all_linked_appeal_codes:
-                for learning in learning_items:
-                    learning['appeal_code'] = appeal_code
-                    orphaned_learning.append(learning)
-
-        # If there are orphaned learning items, add them as a separate section
-        if orphaned_learning:
+        if orphaned:
             structured_data.append({
                 'event_id': None,
                 'event_name': 'Unlinked Ops Learning',
                 'event_slug': None,
+                'summary': 'Ops learning entries that could not be linked to specific events',
+                'description': '',
                 'disaster_type': None,
                 'country': None,
                 'start_date': None,
-                'summary': 'Ops learning entries that could not be linked to specific events',
                 'num_affected': None,
                 'ifrc_severity_level': None,
                 'appeals': [],
-                'related_ops_learning': orphaned_learning
+                'related_ops_learning': orphaned
             })
 
         return structured_data
-    """
-    GET /api/ifrc-events/?country=<int>&disaster_type=<int>
-    Fetches the top-5 events from the IFRC GO API filtered by country and disaster type.
-    """
-    # permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        country = request.query_params.get('country')
-        disaster_type = request.query_params.get('disaster_type')
-        
-        if not country or not disaster_type:
-            return Response(
-                {'detail': 'Both "country" and "disaster_type" query parameters are required.'},
-                status=drf_status.HTTP_400_BAD_REQUEST
-            )
-
-        # Ensure we have integer IDs
-        try:
-            country_id = int(country)
-            dtype_id = int(disaster_type)
-        except ValueError:
-            return Response(
-                {'detail': '"country" and "disaster_type" must be integer IDs.'},
-                status=drf_status.HTTP_400_BAD_REQUEST
-            )
-
-        api_url = 'https://goadmin.ifrc.org/api/v2/event/'
-        params = {
-            # 'countries': country_id,
-            'dtype': dtype_id,
-            'limit': 5,  # Request only 5 results from the API
-        }
-
-        try:
-            # Use httpx with a 10 second timeout (increased for external API)
-            with httpx.Client(timeout=10.0) as client:
-                resp = client.get(api_url, params=params)
-                resp.raise_for_status()
-        except httpx.RequestError as exc:
-            return Response(
-                {'detail': f'Error contacting IFRC API: {exc}'},
-                status=drf_status.HTTP_502_BAD_GATEWAY
-            )
-        except httpx.HTTPStatusError as exc:
-            return Response(
-                {'detail': f'IFRC API returned HTTP {exc.response.status_code}.'},
-                status=drf_status.HTTP_502_BAD_GATEWAY
-            )
-
-        try:
-            json_data = resp.json()
-        except ValueError:
-            return Response(
-                {'detail': 'Invalid JSON response from IFRC API.'},
-                status=drf_status.HTTP_502_BAD_GATEWAY
-            )
-
-        # Extract results from the API response
-        data = json_data.get('results', [])
-        
-        # Return the data with metadata
-        return Response({
-            'count': len(data),
-            'results': data
-        }, status=drf_status.HTTP_200_OK)

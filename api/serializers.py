@@ -23,7 +23,7 @@ from main.writable_nested_serializers import NestedCreateMixin, NestedUpdateMixi
 from notifications.models import Subscription
 from per.models import Overview
 from utils.file_check import validate_file_type
-
+from django.utils.html import strip_tags
 from .event_sources import SOURCES
 from .models import (
     Action,
@@ -2486,3 +2486,9 @@ class CountrySupportingPartnerSerializer(serializers.ModelSerializer):
     class Meta:
         model = CountrySupportingPartner
         fields = "__all__"
+
+
+
+class IfrcEventSummarySerializer(serializers.Serializer):
+    summary = serializers.CharField(required=False, allow_blank=True)
+    description = serializers.CharField(required=False, allow_blank=True)
