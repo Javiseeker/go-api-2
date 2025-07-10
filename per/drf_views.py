@@ -292,9 +292,7 @@ class PerDrefStatusView(APIView):
             if not event:
                 return Response({"error": "Event not found"}, status=drf_status.HTTP_404_NOT_FOUND)
             
-            # Step 2: Get field reports for this event using FieldReportAPIClient
-            field_report_client = FieldReportAPIClient()
-            field_reports = field_report_client.get_field_reports_by_event(event_id)
+            field_reports = event.get("field_reports", [])
             
             if len(field_reports) == 0:
                 return Response({

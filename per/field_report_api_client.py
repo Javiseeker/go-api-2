@@ -1,5 +1,4 @@
 import requests
-from api.serializers import ListFieldReportSerializer, DetailFieldReportSerializer
 from typing import List, Optional, Any
 
 
@@ -22,13 +21,7 @@ class FieldReportAPIClient:
             response = self.session.get(f"{self.base_url}/api/v2/field-report/", params=params)
             response.raise_for_status()
             data = response.json()
-            
-            serializer = ListFieldReportSerializer(data=data['results'], many=True)
-            if serializer.is_valid():
-                return list(serializer.data)  # Access data after validation
-            else:
-                print(f"Validation errors: {serializer.errors}")
-                return data['results']
+            return data['results']
         except requests.RequestException as e:
             print(f"Error fetching field reports: {e}")
             return []
@@ -47,13 +40,7 @@ class FieldReportAPIClient:
             response = self.session.get(f"{self.base_url}/api/v2/field-report/?event={event_id}")
             response.raise_for_status()
             data = response.json()
-            
-            serializer = ListFieldReportSerializer(data=data['results'], many=True)
-            if serializer.is_valid():
-                return list(serializer.data)  # Access data after validation
-            else:
-                print(f"Validation errors: {serializer.errors}")
-                return data['results']
+            return data['results']
         except requests.RequestException as e:
             print(f"Error fetching field reports for event {event_id}: {e}")
             return []

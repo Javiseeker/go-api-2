@@ -28,6 +28,7 @@ class DREFFilters:
         
         # Field Report filters
         self.field_report_id: Optional[int] = kwargs.get('field_report_id')
+        self.field_report_ids: Optional[List[int]] = kwargs.get('field_report_ids')  # NEW: Multiple field report IDs
         self.has_field_report: Optional[bool] = kwargs.get('has_field_report')  # True/False/None
         self.field_report_event_id: Optional[int] = kwargs.get('field_report_event_id')
         
@@ -291,10 +292,14 @@ class DREFManager:
         if filters.status and item.get('status') != filters.status:
             return False
         
-        # Field Report filters
         field_report = item.get('field_report')
+        
         if filters.field_report_id and field_report != filters.field_report_id:
             return False
+        
+        if filters.field_report_ids and field_report not in filters.field_report_ids:
+            return False
+        
         if filters.has_field_report is not None:
             has_field_report = field_report is not None
             if filters.has_field_report != has_field_report:
