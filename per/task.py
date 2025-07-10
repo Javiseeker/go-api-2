@@ -4,7 +4,7 @@ from django.test import override_settings
 from api.logger import logger
 from main.lock import RedisLockKey, redis_lock
 from per.models import OpsLearningCacheResponse
-from per.ops_learning_summary import OpsLearningSummaryTask
+from per.ops_learning_summary2 import OpsLearningSummaryTask
 
 
 def generate_ops_learning_summary(ops_learning_summary_id: int, filter_data: dict, overwrite_prompt_cache: bool = False):
