@@ -1066,8 +1066,3 @@ def logout_user(request):
         logout(request)
     return redirect(reverse(settings.LOGIN_URL))
 
-class HowAreYouAPI(APIView):
-    permission_classes = [permissions.AllowAny]
-
-    def get(self, request, *args, **kwargs):
-        return Response({"message": "Hello, I'm alive!"})
