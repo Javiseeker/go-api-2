@@ -57,34 +57,19 @@ class OpsLearningSummaryTask:
     MIN_DIF_EXCERPTS = 3
 
     primary_prompt = (
-        "\n Please aggregate and summarize the provided data into UP TO THREE structured paragraphs.\n"
-        "The output MUST strictly adhere to the format below:\n"
-        "- *Title*: Each finding should begin with the main finding TITLE in bold.\n"
-        "Should be a high level summary of the finding below. "
-        "The length of the title MUST be between 20 and 30 characters.\n"
-        "- *Excerpts ID*: Identify the ids of the excerpts you took into account for creating the summary.\n"
-        "- Content: Aggregate findings so that they are supported by evidence from more than one report. "
-        "Always integrate evidence from multiple reports or items into the paragraph, and "
-        "include the year and country of the evidence.\n"
-        "- *Confidence Level*: Based on the number of excerpts connected to the finding, "
-        "assign a score from 1 to 5 where 1 is the lowest and 5 is the highest, e.g. 4/5"
-        "At the end of the summary, please highlight any contradictory country reports.\n"
-        "Important:\n\n"
-        "-- DO NOT mention the excerpts id in the content of the summary.\n"
-        "-- DO NOT mention the confidence level in the content of the summary.\n"
-        "-- DO NOT use data from any source other than the one provided.\n\n"
-        "Output Format:\n"
-        "Provide your answer in valid JSON form. Reply with only the answer in valid JSON form and include no other commentary.\n"
-        "Example:\n"
-        '{"0": {"title": "Flexible and Adaptive Response Planning", "excerpts id":"123, 45" '
-        '"content": "Responses in Honduras, Peru, Ecuador, and Panama highlight the importance of adaptable strategies. '
-        "The shift from youth-focused MHPSS to inclusive care in Peru in 2021, the pivot from sanitation infrastructure "
-        "to direct aid in Ecuador in 2022, and the responsive livelihood support in Panama in 2020, "
-        "all underscore the need for continuous reassessment and agile adaptation to the complex, "
-        'changing needs of disaster-affected communities.", "confidence level": "4/5"}, '
-        '"1": {"title": "...", "excerpts id":"...", "content": "...", "confidence level": "..."}, '
-        '"2": {"title": "...", "excerpts id":"...", "content": "...", "confidence level": "..."}, '
-        '"contradictory reports": "..."}'
+        "\n Please review the following operational learnings from past emergency responses. "
+        "Your task is to summarize UP TO THREE clear, actionable insights that help improve future operations.\n\n"
+        "### Output Format:\n"
+        "- *Title*: Short, bold summary of the finding (20–30 characters).\n"
+        "- *Excerpts ID*: The IDs of the sources used (do NOT include in summary content).\n"
+        "- *Content*: Insight supported by multiple reports, briefly mention the country or disaster it’s based on (e.g. 'based on floods in Kenya, 2022'). This helps users understand context.\n"
+        "- *Confidence Level*: Rate from 1 to 5 depending on how many sources support it (e.g. 4/5).\n"
+        "- *Contradictory Reports*: Mention if any countries reported different or opposite experiences.\n\n"
+        "**Important:**\n"
+        "- Do NOT mention excerpt IDs in the content.\n"
+        "- DO include which disaster or country the insight is based on.\n"
+        "- Do NOT use information not provided.\n\n"
+        "Reply with valid JSON only. No extra commentary.\n"
     )
 
     component_prompt = (
@@ -130,8 +115,8 @@ class OpsLearningSummaryTask:
     )
 
     system_message = (
-        "# CONTEXT # I want to summarize a set of lessons learned from a set of past emergency response operations "
-        "to extract the most useful and actionable insights."
+        "# CONTEXT # You are assisting with extracting operational learning from validated reports. "
+        "Your goal is to generate concise, evidence-based summaries that support future emergency response planning. "
         "# STYLE # Use a writing style that is professional but informal."
         "# TONE # Encouraging and motivating."
         "# AUDIENCE # The audience is emergency response personnel from the Red Cross and Red Crescent. "
@@ -141,12 +126,13 @@ class OpsLearningSummaryTask:
 
     primary_instruction_prompt = (
         "You should:\n"
-        "1. Describe, Summarize and Compare: Identify and detail the who, what, where and when "
-        "2. Explain and Connect: Analyze why events happened and how they are related "
-        "3. Identify gaps: Assess what data is available, what is missing and potential biases "
-        "4. Identify key messages: Determine important stories and signals hidden in the data "
-        "5. Select top three: Select up to three findings to report "
+        "1. Spot operational patterns: What approaches worked or didn’t.\n"
+        "2. Explain cause and effect: What led to outcomes.\n"
+        "3. Include brief context: Say where the insight came from (e.g. 'based on response to cyclone in Mozambique').\n"
+        "4. Choose top 3: Focus on the most important and recurring findings.\n"
+        "5. Mention if any country’s reports contradict the trend.\n"
     )
+
 
     secondary_instruction_prompt = (
         "You should for each section in the data (TYPE & SUBTYPE combination):\n"
@@ -484,7 +470,7 @@ class OpsLearningSummaryTask:
             """Adds appeal year and event name as a contextualization of the learnings."""
             for index, row in df.iterrows():
                 df.at[index, "learning"] = (
-                    f"{row['excerpts_id']}. In {row['appeal_year']} in {row['appeal_name']}: {row['learning']}"
+                    f"{row['excerpts_id']}. Based on {row['dtype_name']} in {row['country_name']}, {row['appeal_year']}: {row['learning']}"
                 )
             logger.info("Contextualization added to DataFrame.")
             return df
@@ -644,7 +630,9 @@ class OpsLearningSummaryTask:
             ops_learning_summary_instance,
             used_ops_learnings=primary_learning_data,
         )
-
+        logger.info(f"Prompt is based on these countries: {primary_learning_df['country_name'].unique()}")
+        logger.info(f"Prompt is based on these dtypes: {primary_learning_df['dtype_name'].unique()}")
+        logger.info(f"Excerpt IDs: {primary_learning_df['excerpts_id'].tolist()}")
         # format the prompts
         primary_learning_prompt = "".join([prompt_intro, primary_prompt_instruction, primary_learnings_data, cls.primary_prompt])
         logger.info("Primary Prompt formatted.")

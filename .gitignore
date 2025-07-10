@@ -49,3 +49,4 @@ htmlcov
 country-key-documents/
 celerybeat-schedule
 .venv
+.DS_Store

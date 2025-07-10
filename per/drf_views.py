@@ -1103,13 +1103,25 @@ class IFRCEventListView(views.APIView):
         return self._make_api_request(api_url, params, 'events')
     
     def _fetch_ops_learning(self, country_id: int, disaster_type_id: int) -> Dict[str, Any]:
-        """Fetch operational learning data from IFRC API."""
+        """Fetch operational learning data from IFRC API and filter by country + dtype."""
         api_url = 'https://goadmin.ifrc.org/api/v2/ops-learning/'
-        # Note: ops-learning endpoint may not support country filtering directly
-        # It's typically filtered by disaster type and then linked via appeal codes
-        params = {'dtype': disaster_type_id, 'limit': 5, 'is_validated': 'true'}
-        
-        return self._make_api_request(api_url, params, 'ops learning')
+        params = {
+            'is_validated': 'true',
+            'limit': 100
+        }
+
+        ops_learning_data = self._make_api_request(api_url, params, 'ops learning')
+
+        # 🔍 Filter locally
+        filtered = [
+            item for item in ops_learning_data.get('results', [])
+            if item.get('appeal', {}).get('country') == country_id
+            and item.get('appeal', {}).get('event_details', {}).get('dtype') == disaster_type_id
+        ]
+
+        print(f"=== DEBUG: Filtered ops learning count: {len(filtered)} ===")
+
+        return {'results': filtered}
     
     def _make_api_request(self, url: str, params: Dict[str, Any], data_type: str) -> Dict[str, Any]:
         """Make HTTP request to external API with error handling."""
