@@ -25,7 +25,7 @@ db.sqlite3
 
 # local development files
 static
-# URLs*
+
 db.sqlite3-journal
 
 # test and coverage artifacts
@@ -50,3 +50,4 @@ htmlcov
 country-key-documents/
 celerybeat-schedule
 .venv
+.DS_Store

@@ -1,37 +1,49 @@
+# Standard library imports
 from datetime import datetime
-from rest_framework.decorators import action
-from rest_framework.response import Response
+from typing import Dict, List, Optional, Any
 import requests
-from rest_framework import status
-from django.shortcuts import get_object_or_404
-from api.models import Event
-from per.dref_temp.dref_utils import dref_manager, DREFFilters
-from rest_framework.views import APIView
 import pytz
+import httpx
+
+# Django imports
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Count, F, Prefetch, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils.translation import get_language as django_get_language
+
+# Django filters
 from django_filters import rest_framework as filters
 from django_filters.widgets import CSVWidget
-from drf_spectacular.utils import extend_schema
-from openpyxl import Workbook
-from rest_framework import mixins, permissions, response
+
+# Django REST Framework imports
+from rest_framework import mixins, permissions, response, status, views, viewsets
 from rest_framework import status as drf_status
-from rest_framework import views, viewsets
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
-from per.event_api_client import EventAPIClient
-from per.field_report_api_client import FieldReportAPIClient
-from api.models import Country, Region
+from rest_framework.views import APIView
+
+# Third-party imports
+from drf_spectacular.utils import extend_schema
+from openpyxl import Workbook
+
+# Local app imports
+from api.models import Country, Event, Region
+from api.serializers import IfrcEventSummarySerializer
+from api.logger import logger
+
 from deployments.models import SectorTag
+
 from main.permissions import DenyGuestUserMutationPermission, DenyGuestUserPermission
 from main.utils import SpreadSheetContentNegotiation
+
+from per.dref_temp.dref_utils import dref_manager, DREFFilters
+from per.event_api_client import EventAPIClient
+from per.field_report_api_client import FieldReportAPIClient
 from per.cache import OpslearningSummaryCacheHelper
 from per.filter_set import (
     PerDocumentFilter,
@@ -47,6 +59,7 @@ from per.permissions import (
 )
 from per.task import generate_summary
 from per.utils import filter_per_queryset_by_user_access
+from per.azure_service import AzureServiceClient
 
 from .admin_classes import RegionRestrictedAdmin
 from .custom_renderers import NarrowCSVRenderer
@@ -107,7 +120,6 @@ from .serializers import (
     PublicPerProcessSerializer,
     UserPerCountrySerializer,
 )
-
 
 class PERDocsFilter(filters.FilterSet):
     id = filters.NumberFilter(field_name="id", lookup_expr="exact")
@@ -1131,3 +1143,335 @@ class PerDocumentUploadViewSet(viewsets.ModelViewSet):
         queryset = super().get_queryset()
         user = self.request.user
         return filter_per_queryset_by_user_access(user, queryset)
+
+# -------------------------------------------------------------------
+# implementation of flow - 1 
+# -------------------------------------------------------------------
+
+
+class IFRCEventListView(views.APIView):
+    """API view for fetching and enriching IFRC event data with operational learning insights."""
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.azure_client = AzureServiceClient()
+    
+    def get(self, request) -> Response:
+        """Handle GET requests for IFRC event data."""
+        # Validate request parameters
+        validation_response = self._validate_request_params(request)
+        if validation_response:
+            return validation_response
+        
+        country_id = int(request.query_params.get('country'))
+        disaster_type_id = int(request.query_params.get('disaster_type'))
+        
+        # Fetch data from external APIs
+        events_result = self._fetch_events(country_id, disaster_type_id)
+        if self._is_error_response(events_result):
+            return self._create_error_response(events_result)
+        
+        ops_learning_result = self._fetch_ops_learning(country_id, disaster_type_id)
+        if self._is_error_response(ops_learning_result):
+            return self._create_error_response(ops_learning_result)
+        
+        # Process and structure the data
+        structured_data = self._join_events_and_learning(
+            events_result.get('results', []),
+            ops_learning_result.get('results', [])
+        )
+        
+        # Generate AI summary if Azure client is available
+        ai_summary = self._generate_ai_summary(structured_data)
+        
+        return Response({
+            'ai_structured_summary': ai_summary
+        }, status=drf_status.HTTP_200_OK)
+    
+    def _validate_request_params(self, request) -> Optional[Response]:
+        """Validate required query parameters."""
+        country = request.query_params.get('country')
+        disaster_type = request.query_params.get('disaster_type')
+        
+        if not country or not disaster_type:
+            return Response(
+                {'detail': 'Both "country" and "disaster_type" query parameters are required.'},
+                status=drf_status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            int(country)
+            int(disaster_type)
+        except ValueError:
+            return Response(
+                {'detail': '"country" and "disaster_type" must be integer IDs.'},
+                status=drf_status.HTTP_400_BAD_REQUEST
+            )
+        
+        return None
+    
+    def _is_error_response(self, result: Dict[str, Any]) -> bool:
+        """Check if API response contains an error."""
+        return 'error' in result
+    
+    def _create_error_response(self, error_result: Dict[str, Any]) -> Response:
+        """Create error response from API result."""
+        return Response(
+            error_result, 
+            status=error_result.get('status', drf_status.HTTP_502_BAD_GATEWAY)
+        )
+    
+    def _fetch_events(self, country_id: int, disaster_type_id: int) -> Dict[str, Any]:
+        """Fetch events from IFRC API."""
+        api_url = 'https://goadmin.ifrc.org/api/v2/event/'
+        # Try different parameter names for country filtering
+        params = {'countries__in': country_id, 'dtype': disaster_type_id, 'limit': 5}
+        
+        return self._make_api_request(api_url, params, 'events')
+    
+    def _fetch_ops_learning(self, country_id: int, disaster_type_id: int) -> Dict[str, Any]:
+        """Fetch operational learning data from IFRC API and filter by country + dtype."""
+        api_url = 'https://goadmin.ifrc.org/api/v2/ops-learning/'
+        params = {
+            'is_validated': 'true',
+            'limit': 100
+        }
+
+        ops_learning_data = self._make_api_request(api_url, params, 'ops learning')
+
+        # 🔍 Filter locally
+        filtered = [
+            item for item in ops_learning_data.get('results', [])
+            if item.get('appeal', {}).get('country') == country_id
+            and item.get('appeal', {}).get('event_details', {}).get('dtype') == disaster_type_id
+        ]
+
+        print(f"=== DEBUG: Filtered ops learning count: {len(filtered)} ===")
+
+        return {'results': filtered}
+    
+    def _make_api_request(self, url: str, params: Dict[str, Any], data_type: str) -> Dict[str, Any]:
+        """Make HTTP request to external API with error handling."""
+        try:
+            print(f"=== DEBUG: Making {data_type} request to {url} with params: {params} ===")
+            with httpx.Client(timeout=10.0) as client:
+                response = client.get(url, params=params)
+                response.raise_for_status()
+            
+            results = response.json().get('results', [])
+            print(f"=== DEBUG: {data_type} request returned {len(results)} results ===")
+            
+            # Debug: Print country info for each event
+            if results and data_type == 'events':
+                for i, event in enumerate(results):
+                    countries = event.get('countries', [])
+                    primary_country = countries[0] if countries else {}
+                    print(f"=== DEBUG: Event {i+1}: Country: {primary_country.get('name')} (ID: {primary_country.get('id')}) ===")
+                    print(f"=== DEBUG: Event {i+1} details: {event.get('name')} - Countries count: {len(countries)} ===")
+            
+            return {'results': results}
+        except (httpx.RequestError, httpx.HTTPStatusError, ValueError) as exc:
+            print(f"=== DEBUG: Error in {data_type} request: {exc} ===")
+            return {
+                'error': True,
+                'detail': f'Error fetching {data_type}: {exc}',
+                'status': drf_status.HTTP_502_BAD_GATEWAY
+            }
+    
+    def _join_events_and_learning(self, events: List[Dict], ops_learning: List[Dict]) -> List[Dict]:
+        """Combine events with operational learning data."""
+        # Index learning data by appeal code
+        learning_by_appeal = self._index_learning_by_appeal(ops_learning)
+        
+        # Process events and link with learning data
+        structured_data = []
+        for event in events:
+            event_data = self._create_event_structure(event)
+            self._link_appeals_and_learning(event_data, event, learning_by_appeal)
+            structured_data.append(event_data)
+        
+        # Add orphaned learning entries
+        self._add_orphaned_learning(structured_data, learning_by_appeal)
+        
+        return structured_data
+    
+    def _index_learning_by_appeal(self, ops_learning: List[Dict]) -> Dict[str, List[Dict]]:
+        """Create index of learning entries by appeal code."""
+        learning_by_appeal = {}
+        
+        for learning in ops_learning:
+            appeal_code = learning.get('appeal_code')
+            if not appeal_code:
+                continue
+            
+            learning_entry = self._create_learning_entry(learning)
+            learning_by_appeal.setdefault(appeal_code, []).append(learning_entry)
+        
+        return learning_by_appeal
+    
+    def _create_learning_entry(self, learning: Dict) -> Dict:
+        """Create structured learning entry."""
+        return {
+            'id': learning.get('id'),
+            'learning_text': learning.get('learning_validated_en', learning.get('learning_en')),
+            'document_name': learning.get('document_name'),
+            'document_url': learning.get('document_url'),
+            'sector_validated': learning.get('sector_validated'),
+            'organization_validated': learning.get('organization_validated'),
+            'type_validated': learning.get('type_validated'),
+            'created_at': learning.get('created_at'),
+            'modified_at': learning.get('modified_at')
+        }
+    
+    def _create_event_structure(self, event: Dict) -> Dict:
+        """Create structured event data."""
+        # Handle countries array structure
+        countries = event.get('countries', [])
+        primary_country = countries[0] if countries else {}
+        
+        return {
+            'event_id': event.get('id'),
+            'event_name': event.get('name'),
+            'event_slug': event.get('slug'),
+            'summary': self._create_event_summary(event),
+            'description': event.get('summary', ''),
+            'disaster_type': {
+                'id': event.get('dtype'), 
+                'name': event.get('dtype_name')
+            },
+            'country': {
+                'id': primary_country.get('id'), 
+                'name': primary_country.get('name')
+            },
+            'start_date': event.get('start_date'),
+            'num_affected': event.get('num_affected'),
+            'ifrc_severity_level': event.get('ifrc_severity_level'),
+            'appeals': [],
+            'related_ops_learning': []
+        }
+    
+    def _create_event_summary(self, event: Dict) -> str:
+        """Create formatted event summary."""
+        name = event.get('name', 'Unknown Event')
+        country = event.get('country_name', 'Unknown Country')
+        date = event.get('start_date', 'an unknown date')
+        return f"{name} in {country} on {date}"
+    
+    def _link_appeals_and_learning(self, event_data: Dict, event: Dict, learning_by_appeal: Dict):
+        """Link appeals and learning data to event."""
+        appeals = event.get('appeals', [])
+        
+        for appeal in appeals:
+            appeal_code = appeal.get('code')
+            appeal_data = self._create_appeal_structure(appeal, learning_by_appeal.get(appeal_code, []))
+            event_data['appeals'].append(appeal_data)
+            
+            # Add learning entries to event
+            if appeal_code in learning_by_appeal:
+                event_data['related_ops_learning'].extend(learning_by_appeal[appeal_code])
+        
+        # Remove duplicate learning entries
+        event_data['related_ops_learning'] = self._deduplicate_learning(
+            event_data['related_ops_learning']
+        )
+    
+    def _create_appeal_structure(self, appeal: Dict, ops_learning: List[Dict]) -> Dict:
+        """Create structured appeal data."""
+        return {
+            'appeal_id': appeal.get('id'),
+            'appeal_code': appeal.get('code'),
+            'appeal_name': appeal.get('name'),
+            'appeal_type': appeal.get('atype'),
+            'start_date': appeal.get('start_date'),
+            'end_date': appeal.get('end_date'),
+            'amount_requested': appeal.get('amount_requested'),
+            'amount_funded': appeal.get('amount_funded'),
+            'ops_learning': ops_learning
+        }
+    
+    def _deduplicate_learning(self, learning_entries: List[Dict]) -> List[Dict]:
+        """Remove duplicate learning entries based on ID."""
+        seen_ids = set()
+        unique_learning = []
+        
+        for entry in learning_entries:
+            entry_id = entry.get('id')
+            if entry_id not in seen_ids:
+                seen_ids.add(entry_id)
+                unique_learning.append(entry)
+        
+        return unique_learning
+    
+    def _add_orphaned_learning(self, structured_data: List[Dict], learning_by_appeal: Dict):
+        """Add learning entries that couldn't be linked to specific events."""
+        # Find all linked appeal codes
+        linked_codes = {
+            appeal['appeal_code'] 
+            for event in structured_data 
+            for appeal in event['appeals']
+        }
+        
+        # Collect orphaned learning entries
+        orphaned_learning = []
+        for appeal_code, learning_entries in learning_by_appeal.items():
+            if appeal_code not in linked_codes:
+                for learning in learning_entries:
+                    learning['appeal_code'] = appeal_code
+                    orphaned_learning.append(learning)
+        
+        # Add orphaned entries as separate event
+        if orphaned_learning:
+            orphaned_event = self._create_orphaned_event_structure(orphaned_learning)
+            structured_data.append(orphaned_event)
+    
+    def _create_orphaned_event_structure(self, orphaned_learning: List[Dict]) -> Dict:
+        """Create structure for orphaned learning entries."""
+        return {
+            'event_id': None,
+            'event_name': 'Unlinked Ops Learning',
+            'event_slug': None,
+            'summary': 'Ops learning entries that could not be linked to specific events',
+            'description': '',
+            'disaster_type': None,
+            'country': None,
+            'start_date': None,
+            'num_affected': None,
+            'ifrc_severity_level': None,
+            'appeals': [],
+            'related_ops_learning': orphaned_learning
+        }
+    
+    def _generate_ai_summary(self, structured_data: List[Dict]) -> Optional[str]:
+        """Generate AI-powered summary using Azure OpenAI."""
+        print(f"=== DEBUG: Azure client configured: {self.azure_client.openai_client is not None} ===")
+        
+        if not self.azure_client.openai_client:
+            print("=== DEBUG: Azure OpenAI not configured - skipping enrichment ===")
+            print("=== DEBUG: Environment variables needed: AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_KEY, AZURE_OPENAI_DEPLOYMENT_NAME ===")
+            return None
+        
+        print("=== DEBUG: Processing data with Azure OpenAI... ===")
+        
+        # Combine all text content
+        all_summaries = [event.get('summary', '') for event in structured_data]
+        all_descriptions = [event.get('description', '') for event in structured_data]
+        all_learnings = []
+        all_learning_texts = []
+        
+        for event in structured_data:
+            learning_entries = event.get('related_ops_learning', [])
+            all_learnings.extend(learning_entries)
+            
+            # Extract learning text content
+            for learning in learning_entries:
+                learning_text = learning.get('learning_text', '')
+                if learning_text:
+                    all_learning_texts.append(learning_text)
+        
+        combined_summary = "\n".join(all_summaries)
+        combined_description = "\n".join(all_descriptions)
+        combined_learning_text = "\n".join(all_learning_texts)
+        
+        return self.azure_client.get_structured_summary(
+            combined_summary, combined_description, all_learnings
+        )
