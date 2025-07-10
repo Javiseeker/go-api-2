@@ -57,7 +57,8 @@ class OpsLearningSummaryTask:
     MIN_DIF_EXCERPTS = 3
 
     primary_prompt = (
-        "\n Please review the following operational learnings from past emergency responses. "
+        "\n Below are learnings drawn from similar disasters and countries. "
+        "Please review the following operational learnings from past emergency responses. "
         "Your task is to summarize UP TO THREE clear, actionable insights that help improve future operations.\n\n"
         "### Output Format:\n"
         "- *Title*: Short, bold summary of the finding (20–30 characters).\n"
@@ -865,8 +866,9 @@ class OpsLearningSummaryTask:
                 logger.info(f"Retrying.... Attempt {retires}/{MAX_RETRIES}")
 
         def _modify_summary(summary: dict) -> dict:
+            
             """
-            Checks if the "Confidence level" is present in the primary response and skipping for the secondary summary
+            Cleans up the summary and adds fallback for missing context.
             """
             for key, value in summary.items():
                 if key == "contradictory reports":
@@ -880,27 +882,29 @@ class OpsLearningSummaryTask:
                     else list(set(int(id.strip()) for id in excerpt_ids.split(",") if excerpt_ids and excerpt_ids != ""))
                 )
 
-                # Check if any excerpt id is present in the content and regenerate the summary if found
+                # Check if any excerpt id is in the content
                 if any(re.search(rf"\b{id}\b", content) for id in excerpt_id_list):
-                    return cls.generate_summary(prompt, type)
+                    return OpsLearningSummaryTask.generate_summary(prompt, type)
 
-                value["content"] = content
+                # ✅ Add fallback if no location/disaster info detected
+                if "based on" not in content.lower():
+                    fallback_context = "based on responses from unspecified locations or disaster types."
+                    if content.endswith("."):
+                        content = content + " " + fallback_context
+                    else:
+                        content = content + ". " + fallback_context
+
+                value["content"] = content.strip()
                 value["excerpts id"] = excerpt_id_list
 
-                # Extract and remove if `confidence level` exists in the content
-                confidence_level = "confidence level"
-                if confidence_level not in value and confidence_level in content.lower():
-                    parts = re.split(rf"(?i)\b{confidence_level}\b", content, maxsplit=1)
+                # Optional: extract and move confidence level
+                if "confidence level" not in value and "confidence level" in content.lower():
+                    parts = re.split(r"(?i)\bconfidence level\b", content, maxsplit=1)
                     value["content"] = parts[0].strip() + "."
                     value["confidence level"] = parts[1].strip()
 
             return summary
 
-        summary = _summarize(prompt, type, cls.system_message)
-        formatted_summary = _validate_format(summary)
-        processed_summary = _modify_summary(formatted_summary)
-        logger.info(f"Summaries generated for {type.name}")
-        return processed_summary
 
     @classmethod
     def _get_or_create_summary(
