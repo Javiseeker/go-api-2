@@ -353,19 +353,6 @@ class PerDrefStatusView(APIView):
                 "type_of_onset_display": type_of_onset_display
             }
             
-            # If multiple DREFs found, include info about all of them
-            # if len(matching_drefs) > 1:
-            #     response_data["all_drefs"] = [
-            #         {
-            #             "dref_id": d.id,
-            #             "title": d.title,
-            #             "appeal_code": d.appeal_code,
-            #             "type_of_dref_display": d.type_of_dref_display,
-            #             "field_report": getattr(d, 'field_report', None)
-            #         }
-            #         for d in matching_drefs
-            #     ]
-
             return Response(response_data, status=drf_status.HTTP_200_OK)
             
         except requests.RequestException as e:
