@@ -2490,5 +2490,4 @@ class CountrySupportingPartnerSerializer(serializers.ModelSerializer):
 
 
 class IfrcEventSummarySerializer(serializers.Serializer):
-    summary = serializers.CharField(required=False, allow_blank=True)
-    description = serializers.CharField(required=False, allow_blank=True)
+    ai_structured_summary = serializers.CharField(required=False, allow_blank=True)
