@@ -1065,3 +1065,4 @@ def logout_user(request):
     if request.method == "POST" and request.user.is_authenticated:
         logout(request)
     return redirect(reverse(settings.LOGIN_URL))
+

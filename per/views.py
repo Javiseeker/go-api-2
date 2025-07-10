@@ -6,6 +6,7 @@ from django.http import JsonResponse
 from rest_framework import authentication, permissions
 from rest_framework.views import APIView
 
+
 from api.models import Country
 from api.views import bad_request
 
@@ -470,3 +471,4 @@ class LearningTypes(APIView):
     def get(cls, request):
         keys_labels = [{"key": i, "label": v} for i, v in LearningType.choices]
         return JsonResponse(keys_labels, safe=False)
+
