@@ -150,6 +150,7 @@ class BaseDREF:
     disability_people_per: float
     
     # Optional fields
+    field_report: Optional[int] = None  # Field Report relationship
     glide_code: Optional[str] = None
     total_dref_allocation: Optional[int] = None
     amount_requested: Optional[int] = None

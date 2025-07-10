@@ -27,6 +27,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
 from per.event_api_client import EventAPIClient
+from per.field_report_api_client import FieldReportAPIClient
 from api.models import Country, Region
 from deployments.models import SectorTag
 from main.permissions import DenyGuestUserMutationPermission, DenyGuestUserPermission
@@ -279,41 +280,90 @@ class PerDrefStatusView(APIView):
             return Response({"error": "Event ID is required"}, status=drf_status.HTTP_400_BAD_REQUEST)
         
         try:
-            # Check if the event exists using event_id
-            event = EventAPIClient().get_event_detail(event_id)
+            # Convert to int for validation
+            event_id = int(event_id)
+        except ValueError:
+            return Response({"error": "Event ID must be a valid integer"}, status=drf_status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Step 1: Check if the event exists using EventAPIClient
+            event_client = EventAPIClient()
+            event = event_client.get_event_detail(event_id)
             if not event:
                 return Response({"error": "Event not found"}, status=drf_status.HTTP_404_NOT_FOUND)
-            filter = DREFFilters()
-            filter.event_map_file_id = int(event_id)
-
-            matching_dref = dref_manager.get_data("basic", filters=filter)
-            print(f"Matching DREF records found: {len(matching_dref)}")
+            
+            # Step 2: Get field reports for this event using FieldReportAPIClient
+            field_report_client = FieldReportAPIClient()
+            field_reports = field_report_client.get_field_reports_by_event(event_id)
+            
+            if len(field_reports) == 0:
+                return Response({
+                    "error": "Field Reports not found",
+                    "event_id": event_id,
+                    "event_name": event.get("name")
+                }, status=drf_status.HTTP_404_NOT_FOUND)
+            
+            print(f"Found {len(field_reports)} field reports for event {event_id}")
+            
+            # Step 3: Extract field report IDs from the results array
+            field_report_ids = [fr['id'] for fr in field_reports]
+            print(f"Field report IDs: {field_report_ids}")
+            
+            # Step 4: Filter DREFs using the list of field report IDs
+            filters = DREFFilters(field_report_ids=field_report_ids)
+            matching_drefs = dref_manager.get_data("basic", filters)
+            
+            # Alternative approach using helper method:
+            # matching_drefs = dref_manager.get_drefs_by_field_report_ids("basic", field_report_ids)
+            
+            print(f"Matching DREF records found: {len(matching_drefs)}")
             print(f"Event ID: {event_id}, Event Name: {event.get('name')}")
 
-            if len(matching_dref) == 0:
-                return Response({"error": "No DREF found for the given event ID"}, status=drf_status.HTTP_404_NOT_FOUND)
-            type_of_dref_display = matching_dref[0].type_of_dref_display 
-            type_of_onset_display = matching_dref[0].type_of_onset_display
+            if len(matching_drefs) == 0:
+                return Response({
+                    "error": "No DREF found for the given event ID",
+                    "event_id": event_id,
+                    "event_name": event.get("name"),
+                    "field_reports_count": len(field_reports),
+                    "field_report_ids": field_report_ids
+                }, status=drf_status.HTTP_404_NOT_FOUND)
+            
+            # Step 5: Extract DREF information
+            dref = matching_drefs[0]
+            type_of_dref_display = dref.type_of_dref_display
+            type_of_onset_display = dref.type_of_onset_display
+
             print(f"Type of DREF: {type_of_dref_display}, Type of Onset: {type_of_onset_display}")
 
-            # dref_sources = ["final-report", "op-update", "basic"]
-            # dref_found = None
-            # return Response({
-            #     "event_id": event_id,
-            #     "event_name": event.get("name"),
-            #     "dref_found": dref_found,
-            #     "dref_sources": dref_sources
-            # })
-            return Response({
+            # Step 6: Return comprehensive response
+            response_data = {
+                "dref_id": matching_drefs[0].id,
+                "dref_count": len(matching_drefs),
                 "type_of_dref_display": type_of_dref_display,
-                "type_of_onset_display": type_of_onset_display,
-            }, status=drf_status.HTTP_200_OK)
-            # return f"{type_of_dref_display}|{type_of_onset_display}"
+                "type_of_onset_display": type_of_onset_display
+            }
+            
+            # If multiple DREFs found, include info about all of them
+            # if len(matching_drefs) > 1:
+            #     response_data["all_drefs"] = [
+            #         {
+            #             "dref_id": d.id,
+            #             "title": d.title,
+            #             "appeal_code": d.appeal_code,
+            #             "type_of_dref_display": d.type_of_dref_display,
+            #             "field_report": getattr(d, 'field_report', None)
+            #         }
+            #         for d in matching_drefs
+            #     ]
+
+            return Response(response_data, status=drf_status.HTTP_200_OK)
+            
         except requests.RequestException as e:
-            return Response({"error": str(e)}, status=drf_status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-   
+            return Response({"error": f"API request failed: {str(e)}"}, status=drf_status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception as e:
+            print(f"Unexpected error in PerDrefStatusView: {str(e)}")
+            return Response({"error": f"Internal server error: {str(e)}"}, status=drf_status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
 # Objective 2
     # Object return two summaries, operational stratgies and overall objectives + all budgeting in DREF
     # which can be shown in the frontend

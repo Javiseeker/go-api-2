@@ -26,6 +26,11 @@ class DREFFilters:
         self.event_date_to: Optional[str] = kwargs.get('event_date_to')
         self.status: Optional[int] = kwargs.get('status')
         
+        # Field Report filters
+        self.field_report_id: Optional[int] = kwargs.get('field_report_id')
+        self.has_field_report: Optional[bool] = kwargs.get('has_field_report')  # True/False/None
+        self.field_report_event_id: Optional[int] = kwargs.get('field_report_event_id')
+        
         self.event_map_file_id: Optional[int] = kwargs.get('event_map_file_id')
         
         # Disaster and location filters
@@ -159,6 +164,10 @@ class DREFManager:
             'ns_respond_date': data.get('ns_respond_date', ''),
             'created_at': data.get('created_at', ''),
             'modified_at': data.get('modified_at', ''),
+            
+            # Field Report relationship
+            'field_report': data.get('field_report'),
+            
             'type_of_onset': data.get('type_of_onset', 0),
             'type_of_onset_display': data.get('type_of_onset_display', ''),
             'type_of_dref': data.get('type_of_dref', 0),
@@ -281,6 +290,15 @@ class DREFManager:
             return False
         if filters.status and item.get('status') != filters.status:
             return False
+        
+        # Field Report filters
+        field_report = item.get('field_report')
+        if filters.field_report_id and field_report != filters.field_report_id:
+            return False
+        if filters.has_field_report is not None:
+            has_field_report = field_report is not None
+            if filters.has_field_report != has_field_report:
+                return False
         
         # Event map file filter
         if filters.event_map_file_id:
@@ -472,8 +490,6 @@ class DREFManager:
         
         # Use efficient filtering if filters are provided
         return self.load_data_filtered(source, filters)
-    
-
     
     def get_unique_disaster_types(self, source: DREFDataSource) -> List[DisasterTypeDetails]:
         """Get unique disaster types from data"""
