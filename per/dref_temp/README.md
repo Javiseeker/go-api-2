@@ -1,168 +1,97 @@
-# DREF Utils - Quick Reference
+# DREF Utils
 
-## Import and Basic Usage
+Simple utilities for working with DREF operations data in Django.
+
+## Quick Start
 
 ```python
 from per.dref_temp import dref_manager, DREFFilters
 
 # Get all operations
-operations = dref_manager.get_data('final-report')
+operations = dref_manager.get_data('basic')
 
-# Get with filters
-filtered = dref_manager.get_data('final-report', DREFFilters(country_name='haiti'))
+# Search by country
+haiti_ops = dref_manager.get_data('basic', DREFFilters(country_name='haiti'))
 
-# Get statistics
-stats = dref_manager.get_statistics('final-report')
+# Search by field report IDs (for linking with events)
+field_report_ids = [17010, 17005, 17003]
+matching_drefs = dref_manager.get_data('basic', DREFFilters(field_report_ids=field_report_ids))
+```
+
+## Common Filters
+
+```python
+filters = DREFFilters(
+    country_name="haiti",           # Search by country
+    disaster_type_name="earthquake", # Search by disaster type
+    field_report_ids=[123, 456],    # Match multiple field reports
+    min_people_affected=10000,      # Minimum people affected
+    event_date_from="2024-01-01",   # Events after date
+    search_text="hurricane"         # Text search
+)
+
+operations = dref_manager.get_data('basic', filters)
 ```
 
 ## Data Sources
 
-| Source | Description | Use For |
-|--------|-------------|---------|
-| `'final-report'` | Completed operations with outcomes | Results, lessons learned, final numbers |
-| `'op-update'` | Operations with updates/changes | Tracking modifications, budget changes |
-| `'basic'` | Initial applications, active operations | Current ops, planning data |
+- `'basic'` - Current operations and applications
+- `'final-report'` - Completed operations with results
+- `'op-update'` - Operations with updates/changes
 
-## Filter Options
+## Operation Data
 
-```python
-filters = DREFFilters(
-    # Basic
-    id=123,
-    title="earthquake",              # Partial match
-    appeal_code="MDRHT008",
-    
-    # Location
-    country_name="haiti",            # Partial match
-    country_iso="HT",
-    region=1,                        # 1=Americas, 2=Asia Pacific, 3=Europe, 4=MENA, 5=Africa
-    district_name="ouest",
-    
-    # Disaster Type
-    disaster_type_name="earthquake", # Partial match
-    disaster_type_id=1,
-    
-    # Scale
-    min_people_affected=10000,
-    max_people_affected=1000000,
-    min_budget=100000,
-    max_budget=5000000,
-    
-    # Dates (YYYY-MM-DD format)
-    event_date_from="2023-01-01",
-    event_date_to="2023-12-31",
-    created_from="2023-01-01",
-    created_to="2023-12-31",
-    
-    # Status
-    is_published=True,
-    emergency_appeal_planned=False,
-    
-    # Text Search
-    search_text="hurricane relief"   # Searches title, description, country, etc.
-)
-```
+Each operation includes:
 
-## Common Disaster Types
-
-- `"flood"` - Flood operations
-- `"earthquake"` - Earthquake operations  
-- `"cyclone"` - Cyclone/Hurricane operations
-- `"drought"` - Drought operations
-- `"population movement"` - Migration/displacement
-- `"epidemic"` - Health emergencies
-- `"fire"` - Fire disasters
-- `"other"` - Other disaster types
-
-## Regions
-
-- `1` - Americas
-- `2` - Asia Pacific
-- `3` - Europe  
-- `4` - MENA (Middle East & North Africa)
-- `5` - Africa
-
-## Main Functions
-
-```python
-# Load data
-operations = dref_manager.get_data(source, filters=None)
-
-# Get statistics
-stats = dref_manager.get_statistics(source, filters=None)
-# Returns: total_operations, total_people_affected, total_budget, 
-#          disaster_types, countries, by_year
-
-# Get unique values
-countries = dref_manager.get_unique_countries(source)
-disasters = dref_manager.get_unique_disaster_types(source)
-
-# Clear cache (if JSON files updated)
-dref_manager.clear_cache()
-```
-
-## Quick Examples
-
-```python
-# Search by text
-hurricane_ops = dref_manager.get_data('final-report', 
-    DREFFilters(search_text='hurricane'))
-
-# Large operations in Americas
-large_americas = dref_manager.get_data('final-report', 
-    DREFFilters(region=1, min_people_affected=50000))
-
-# Recent earthquakes
-recent_earthquakes = dref_manager.get_data('basic', 
-    DREFFilters(
-        disaster_type_name='earthquake',
-        event_date_from='2024-01-01'
-    ))
-
-# Operations by country
-haiti_ops = dref_manager.get_data('final-report', 
-    DREFFilters(country_name='haiti'))
-
-# High budget operations
-high_budget = dref_manager.get_data('final-report', 
-    DREFFilters(min_budget=1000000))
-```
-
-## API Response Format
-
-Each operation returns:
 ```python
 {
     'id': 123,
     'title': 'Haiti Earthquake Response',
     'appeal_code': 'MDRHT008',
-    'country_details': {
-        'name': 'Haiti',
-        'iso': 'HT',
-        'region': 1
-    },
-    'disaster_type_details': {
-        'id': 1,
-        'name': 'Earthquake'
-    },
+    'country_details': {'name': 'Haiti', 'iso': 'HT'},
+    'disaster_type_details': {'name': 'Earthquake'},
     'number_of_people_affected': 100000,
     'total_dref_allocation': 500000,
     'event_date': '2024-01-15',
-    # ... more fields
+    'field_report': 17010  # Links to field reports
 }
 ```
 
-## Error Handling
+## Helper Functions
 
 ```python
-try:
-    operations = dref_manager.get_data('final-report')
-except FileNotFoundError:
-    # JSON files not found
-    pass
-except Exception as e:
-    # Other errors
-    pass
+# Get lists for dropdowns
+countries = dref_manager.get_unique_countries('basic')
+disaster_types = dref_manager.get_unique_disaster_types('basic')
+
+# Clear cache if JSON files updated
+dref_manager.clear_cache()
 ```
 
-That's it! All filters support partial matching for text fields.
+## Common Use Cases
+
+### Find DREF by Event
+```python
+def find_dref_by_event(event_id):
+    # Get field reports for event
+    field_reports = get_field_reports_for_event(event_id)
+    field_report_ids = [fr['id'] for fr in field_reports]
+    
+    # Find matching DREFs
+    filters = DREFFilters(field_report_ids=field_report_ids)
+    return dref_manager.get_data('basic', filters)
+```
+
+### Search Operations
+```python
+def search_operations(country=None, disaster_type=None):
+    filters = DREFFilters()
+    if country:
+        filters.country_name = country
+    if disaster_type:
+        filters.disaster_type_name = disaster_type
+    
+    return dref_manager.get_data('basic', filters)
+```
+
+That's it! Simple and straightforward.

@@ -1,30 +1,49 @@
+# Standard library imports
 from datetime import datetime
 from typing import Dict, List, Optional, Any
-from api.serializers import IfrcEventSummarySerializer
+import requests
 import pytz
 import httpx
+
+# Django imports
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Count, F, Prefetch, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils.translation import get_language as django_get_language
+
+# Django filters
 from django_filters import rest_framework as filters
 from django_filters.widgets import CSVWidget
-from drf_spectacular.utils import extend_schema
-from openpyxl import Workbook
-from rest_framework import mixins, permissions, response
+
+# Django REST Framework imports
+from rest_framework import mixins, permissions, response, status, views, viewsets
 from rest_framework import status as drf_status
-from rest_framework import views, viewsets
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
-from api.models import Country, Region
+from rest_framework.views import APIView
+
+# Third-party imports
+from drf_spectacular.utils import extend_schema
+from openpyxl import Workbook
+
+# Local app imports
+from api.models import Country, Event, Region
+from api.serializers import IfrcEventSummarySerializer
+from api.logger import logger
+
 from deployments.models import SectorTag
+
 from main.permissions import DenyGuestUserMutationPermission, DenyGuestUserPermission
 from main.utils import SpreadSheetContentNegotiation
+
+from per.dref_temp.dref_utils import dref_manager, DREFFilters
+from per.event_api_client import EventAPIClient
+from per.field_report_api_client import FieldReportAPIClient
 from per.cache import OpslearningSummaryCacheHelper
 from per.filter_set import (
     PerDocumentFilter,
@@ -41,7 +60,6 @@ from per.permissions import (
 from per.task import generate_summary
 from per.utils import filter_per_queryset_by_user_access
 from per.azure_service import AzureServiceClient
-from api.logger import logger
 
 from .admin_classes import RegionRestrictedAdmin
 from .custom_renderers import NarrowCSVRenderer
@@ -102,7 +120,6 @@ from .serializers import (
     PublicPerProcessSerializer,
     UserPerCountrySerializer,
 )
-
 
 class PERDocsFilter(filters.FilterSet):
     id = filters.NumberFilter(field_name="id", lookup_expr="exact")
@@ -267,6 +284,103 @@ class PerOverviewViewSet(viewsets.ModelViewSet):
         queryset = Overview.objects.select_related("country", "user")
         return self.get_filtered_queryset(self.request, queryset, dispatch=0)
 
+class PerDrefStatusView(APIView):
+    def get(self, request):
+        event_id = request.query_params.get("id", None)
+
+        if not event_id:
+            return Response({"error": "Event ID is required"}, status=drf_status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Convert to int for validation
+            event_id = int(event_id)
+        except ValueError:
+            return Response({"error": "Event ID must be a valid integer"}, status=drf_status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Step 1: Check if the event exists using EventAPIClient
+            event_client = EventAPIClient()
+            event = event_client.get_event_detail(event_id)
+            if not event:
+                return Response({"error": "Event not found"}, status=drf_status.HTTP_404_NOT_FOUND)
+            
+            field_reports = event.get("field_reports", [])
+            
+            if len(field_reports) == 0:
+                return Response({
+                    "error": "Field Reports not found",
+                    "event_id": event_id,
+                    "event_name": event.get("name")
+                }, status=drf_status.HTTP_404_NOT_FOUND)
+            
+            print(f"Found {len(field_reports)} field reports for event {event_id}")
+            
+            # Step 3: Extract field report IDs from the results array
+            field_report_ids = [fr['id'] for fr in field_reports]
+            print(f"Field report IDs: {field_report_ids}")
+            
+            # Step 4: Filter DREFs using the list of field report IDs
+            filters = DREFFilters(field_report_ids=field_report_ids)
+            matching_drefs = dref_manager.get_data("basic", filters)
+            
+            # Alternative approach using helper method:
+            # matching_drefs = dref_manager.get_drefs_by_field_report_ids("basic", field_report_ids)
+            
+            print(f"Matching DREF records found: {len(matching_drefs)}")
+            print(f"Event ID: {event_id}, Event Name: {event.get('name')}")
+
+            if len(matching_drefs) == 0:
+                return Response({
+                    "error": "No DREF found for the given event ID",
+                    "event_id": event_id,
+                    "event_name": event.get("name"),
+                    "field_reports_count": len(field_reports),
+                    "field_report_ids": field_report_ids
+                }, status=drf_status.HTTP_404_NOT_FOUND)
+            
+            # Step 5: Extract DREF information
+            dref = matching_drefs[0]
+            type_of_dref_display = dref.type_of_dref_display
+            type_of_onset_display = dref.type_of_onset_display
+
+            print(f"Type of DREF: {type_of_dref_display}, Type of Onset: {type_of_onset_display}")
+
+            # Step 6: Return comprehensive response
+            response_data = {
+                "dref_id": matching_drefs[0].id,
+                "dref_count": len(matching_drefs),
+                "type_of_dref_display": type_of_dref_display,
+                "type_of_onset_display": type_of_onset_display
+            }
+            
+            return Response(response_data, status=drf_status.HTTP_200_OK)
+            
+        except requests.RequestException as e:
+            return Response({"error": f"API request failed: {str(e)}"}, status=drf_status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception as e:
+            print(f"Unexpected error in PerDrefStatusView: {str(e)}")
+            return Response({"error": f"Internal server error: {str(e)}"}, status=drf_status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+# Objective 2
+    # Object return two summaries, operational stratgies and overall objectives + all budgeting in DREF
+    # which can be shown in the frontend
+    # Two DREF summaries are returned
+    # Summary 1 - Data for two properties:
+    #   1. Overall objective of the operation 
+    #   2. Operation strategy rationale
+    # Summary 2 - Budgeting for DREF
+
+class PerDrefLLMSummaryView(APIView):
+    # Create DTO for Summary 1 and Summary 2
+    # Creating a use method to obtain data from DREF dump
+    # Use Mustafa API key to prompt LLM summary using method
+
+    def get(self, request):
+
+        # event_id = request.query_params.get("id", None)
+        # if not event_id:
+        #     return Response({"error": "Event ID is required"}, status=drf_status.HTTP_400_BAD_REQUEST)
+        return Response({200: "DREF LLM Summary View is not implemented yet"})
 
 class ExportPerView(views.APIView):
     permission_classes = [permissions.IsAuthenticated, DenyGuestUserPermission]
