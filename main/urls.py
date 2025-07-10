@@ -282,3 +282,4 @@ urlpatterns += i18n_patterns(
     # TODO: Fix admin panel language switcher before enabling switcher in production
     prefix_default_language=True,
 )
+
