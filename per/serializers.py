@@ -1294,3 +1294,11 @@ class OpsLearningStatSerializer(serializers.Serializer):
     learning_by_country = LearningByCountrySerializer(many=True)
     learning_by_sector = LearningBySectorSerializer(many=True)
     sources_overtime = LearningSourcesOvertimeSerializer(many=True)
+
+
+class PerDrefLLMSummarySerializer(serializers.Serializer):
+    """
+    DTO for PerDrefLLMSummaryView response containing brief and long summaries.
+    """
+    briefSummary = serializers.CharField(allow_blank=True, required=False)
+    longSummary = serializers.CharField(allow_blank=True, required=False)

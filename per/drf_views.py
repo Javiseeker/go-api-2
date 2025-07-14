@@ -107,6 +107,7 @@ from .serializers import (
     OpsLearningSummarySerializer,
     PerAssessmentSerializer,
     PerDocumentUploadSerializer,
+    PerDrefLLMSummarySerializer,
     PerFileInputSerializer,
     PerFileSerializer,
     PerFormDataSerializer,
@@ -371,16 +372,24 @@ class PerDrefStatusView(APIView):
     # Summary 2 - Budgeting for DREF
 
 class PerDrefLLMSummaryView(APIView):
-    # Create DTO for Summary 1 and Summary 2
-    # Creating a use method to obtain data from DREF dump
-    # Use Mustafa API key to prompt LLM summary using method
-
+    """
+    API view for generating DREF LLM summaries.
+    Returns brief and long summaries for DREF operations.
+    """
+    
     def get(self, request):
-
         # event_id = request.query_params.get("id", None)
         # if not event_id:
         #     return Response({"error": "Event ID is required"}, status=drf_status.HTTP_400_BAD_REQUEST)
-        return Response({200: "DREF LLM Summary View is not implemented yet"})
+        
+        # Placeholder data - replace with actual implementation
+        summary_data = {
+            "briefSummary": "",
+            "longSummary": ""
+        }
+        
+        serializer = PerDrefLLMSummarySerializer(summary_data)
+        return Response(serializer.data, status=drf_status.HTTP_200_OK)
 
 class ExportPerView(views.APIView):
     permission_classes = [permissions.IsAuthenticated, DenyGuestUserPermission]
