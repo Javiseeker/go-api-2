@@ -1,10 +1,8 @@
-import ast
-import re
 import json
-import typing
-from typing import Dict, List, Optional, Any
-
+import re
 import tiktoken
+from typing import Dict, Any, Optional
+
 from django.conf import settings
 from django.utils.functional import cached_property
 from openai import AzureOpenAI
@@ -38,171 +36,163 @@ class AzureOpenAiChat:
 
 class DrefSummaryTask:
     """Task class for generating DREF operation summaries using Azure OpenAI"""
-
+    
     PROMPT_DATA_LENGTH_LIMIT = 8000
     PROMPT_LENGTH_LIMIT = 10000
     ENCODING_NAME = "cl100k_base"
-
+    
     # System message for DREF summaries
     system_message = (
-        "# CONTEXT # You are an expert analyst for the International Federation of Red Cross and Red Crescent Societies (IFRC) "
-        "specializing in Disaster Response Emergency Fund (DREF) operations. Your role is to analyze and summarize DREF operational data "
-        "to provide actionable insights for disaster response planning and decision-making.\n"
-        "# STYLE # Use a professional, clear, and analytical writing style that is accessible to humanitarian professionals.\n"
-        "# TONE # Objective and informative, focusing on practical insights and strategic implications.\n"
-        "# AUDIENCE # IFRC staff, National Society personnel, and humanitarian response coordinators who need concise, "
-        "actionable information for operational planning and strategic decision-making."
+        "You are an IFRC expert analyst specializing in DREF operations. "
+        "Analyze DREF data and provide clear, actionable insights for humanitarian response planning. "
+        "Use professional, analytical writing accessible to IFRC staff and National Society personnel."
     )
 
-    # Short prompt for operational objective and strategy summary (max 3 lines)
+    # Operational summary prompt (3 lines max)
     operational_summary_prompt = (
-        "\nPlease analyze the provided DREF operational data and create a VERY BRIEF summary focusing on:\n"
-        "1. **Overall Objective**: The main operational objectives of the DREF operation\n"
-        "2. **Strategic Rationale**: The strategic reasoning behind the operation's approach\n\n"
-        "IMPORTANT: Your response must be EXACTLY 3 lines maximum. Each line should be a complete sentence.\n"
-        "Line 1: Summarize the overall objective of the operation\n"
-        "Line 2: Explain the strategic rationale and approach\n"
-        "Line 3: Highlight key operational details (target population, timeline, or scope)\n\n"
-        "The output MUST be in plain text format, NOT JSON. Maximum 3 lines total.\n"
-        "Example format:\n"
+        "\nAnalyze the DREF data and create a 3-line summary:\n"
+        "Line 1: Overall objective of the operation\n"
+        "Line 2: Strategic rationale and approach\n"
+        "Line 3: Key operational details (target population, timeline, budget)\n\n"
+        "Requirements:\n"
+        "- Plain text format (not JSON)\n"
+        "- Exactly 3 lines, one complete sentence each\n"
+        "- Include specific numbers and details\n"
+        "- Focus on operation_objective and response_strategy fields\n\n"
+        "Example:\n"
         "The operation aims to provide emergency assistance to 5,000 flood-affected people in Bangladesh through cash transfers and relief items.\n"
         "The strategy prioritizes rapid response through existing National Society networks and coordination with local authorities to ensure efficient delivery.\n"
-        "The 4-month operation targets vulnerable households in 3 districts with a budget of CHF 250,000 focusing on immediate basic needs.\n\n"
-        "Important guidelines:\n"
-        "- Be extremely concise but informative\n"
-        "- Focus on the most critical operational information\n"
-        "- Use specific numbers and details where available\n"
-        "- Do not exceed 3 lines under any circumstances\n"
-        "- Reply with ONLY the 3-line summary, no additional text or formatting"
+        "The 4-month operation targets vulnerable households in 3 districts with a budget of CHF 250,000 focusing on immediate basic needs."
     )
 
-    # Comprehensive prompt for budget and financial summary
+    # Budget summary prompt (comprehensive JSON)
     budget_summary_prompt = (
-        "\nPlease analyze the provided DREF budget and financial data and create a comprehensive summary focusing on:\n"
-        "1. **Budget Overview**: Total allocation, funding sources, and budget breakdown\n"
-        "2. **Sectoral Analysis**: How funds are distributed across different sectors and interventions\n"
-        "3. **Financial Efficiency**: Analysis of cost-effectiveness and resource allocation\n\n"
-        "The output MUST strictly adhere to the following JSON format:\n"
+        "\nAnalyze the DREF budget data and create a comprehensive financial summary in JSON format:\n\n"
         "{\n"
         '  "budget_overview": {\n'
-        '    "total_allocation": "Total DREF amount requested/allocated with currency",\n'
-        '    "operation_timeframe": "Duration of the operation in months",\n'
+        '    "total_allocation": "Total DREF amount with currency",\n'
+        '    "operation_timeframe": "Duration in months",\n'
         '    "target_beneficiaries": "Number of people targeted",\n'
-        '    "cost_per_beneficiary": "Calculated cost per person assisted",\n'
-        '    "funding_status": "Current status of funding approval"\n'
+        '    "cost_per_beneficiary": "Cost per person assisted",\n'
+        '    "funding_status": "Funding approval status"\n'
         '  },\n'
         '  "sectoral_breakdown": {\n'
-        '    "summary": "Detailed overview of how budget is distributed across sectors and interventions",\n'
-        '    "major_sectors": [\n'
-        '      {\n'
-        '        "sector": "Sector name",\n'
-        '        "budget": "Amount allocated",\n'
-        '        "percentage": "Percentage of total budget",\n'
-        '        "target_beneficiaries": "Number of people targeted in this sector",\n'
-        '        "key_activities": "Main activities planned"\n'
-        '      }\n'
-        '    ],\n'
-        '    "support_costs": "Administrative and operational support costs breakdown"\n'
+        '    "summary": "Budget distribution across sectors",\n'
+        '    "major_sectors": [{\n'
+        '      "sector": "Sector name",\n'
+        '      "budget": "Amount allocated",\n'
+        '      "percentage": "% of total budget",\n'
+        '      "target_beneficiaries": "People targeted",\n'
+        '      "key_activities": "Main activities"\n'
+        '    }],\n'
+        '    "support_costs": "Administrative costs breakdown"\n'
         '  },\n'
         '  "financial_analysis": {\n'
-        '    "summary": "Comprehensive analysis of budget efficiency, allocation rationale, and value for money",\n'
-        '    "key_insights": [\n'
-        '      "List of detailed insights about budget allocation priorities",\n'
-        '      "Analysis of resource distribution across interventions",\n'
-        '      "Assessment of operational efficiency and cost-effectiveness",\n'
-        '      "Evaluation of budget alignment with operational objectives"\n'
-        '    ],\n'
-        '    "resource_allocation_strategy": "How resources are strategically allocated to maximize impact",\n'
-        '    "cost_effectiveness_assessment": "Assessment of value for money and operational efficiency"\n'
+        '    "summary": "Budget efficiency and allocation rationale",\n'
+        '    "key_insights": ["Budget allocation priorities", "Resource distribution", "Cost-effectiveness", "Alignment with objectives"],\n'
+        '    "resource_allocation_strategy": "Strategic allocation approach",\n'
+        '    "cost_effectiveness_assessment": "Value for money analysis"\n'
         '  },\n'
         '  "operational_costs": {\n'
-        '    "human_resources": "Staff and personnel costs breakdown",\n'
-        '    "logistics_and_operations": "Operational and logistics costs",\n'
-        '    "coordination_and_partnerships": "Coordination and partnership costs",\n'
-        '    "monitoring_and_evaluation": "M&E and reporting costs"\n'
+        '    "human_resources": "Staff costs",\n'
+        '    "logistics_and_operations": "Operational costs",\n'
+        '    "coordination_and_partnerships": "Coordination costs",\n'
+        '    "monitoring_and_evaluation": "M&E costs"\n'
         '  },\n'
-        '  "confidence_level": "High/Medium/Low based on data completeness and clarity",\n'
-        '  "data_quality_notes": "Notes about data availability and any limitations in the analysis"\n'
+        '  "confidence_level": "High/Medium/Low",\n'
+        '  "data_quality_notes": "Data limitations"\n'
         "}\n\n"
-        "Important guidelines:\n"
-        "- Provide detailed analysis with specific budget figures and percentages\n"
-        "- Calculate cost per beneficiary and efficiency ratios where possible\n"
-        "- Analyze the logical flow of budget allocation based on operational priorities\n"
-        "- Include insights about resource optimization and strategic allocation\n"
-        "- If certain financial data is not available, note it clearly\n"
-        "- Ensure comprehensive coverage of all budget aspects and planned interventions\n"
-        "- Reply with ONLY the JSON response, no additional commentary"
+        "Requirements:\n"
+        "- Calculate cost per beneficiary and percentages\n"
+        "- Include specific budget figures\n"
+        "- Analyze budget allocation logic\n"
+        "- Note missing data clearly\n"
+        "- Return only JSON, no commentary"
     )
-
+    
     @staticmethod
     def count_tokens(string: str, encoding_name: str) -> int:
         """Returns the number of tokens in a text string."""
         encoding = tiktoken.get_encoding(encoding_name)
         return len(encoding.encode(string))
-
+    
     @classmethod
-    def extract_operational_data(cls, dref_data: Dict[str, Any]) -> str:
-        """Extract operational objective and strategy data from DREF - focused on key fields"""
-        # Focus on the two main fields mentioned by user
-        key_fields = [
-            'operation_objective',  # Overall objective of the operation
-            'response_strategy',    # Operation strategy rationale
-        ]
+    def generate_operational_summary(cls, dref_data: Dict[str, Any]) -> Optional[str]:
+        """Generate operational objective and strategy summary (3 lines max)"""
+        logger.info("Generating DREF operational summary")
         
-        # Additional context fields for better understanding
-        context_fields = [
-            'title',
-            'total_targeted_population',
-            'people_in_need',
-            'amount_requested',
-            'operation_timeframe',
-            'country_details',
-            'disaster_type_details',
-            'event_date',
-            'end_date'
+        # Extract operational data
+        operational_fields = [
+            'operation_objective', 'response_strategy', 'title', 'total_targeted_population',
+            'people_in_need', 'amount_requested', 'operation_timeframe', 'country_details',
+            'disaster_type_details', 'event_date', 'end_date'
         ]
         
         extracted_data = {}
-        
-        # Extract key operational data
-        for field in key_fields + context_fields:
+        for field in operational_fields:
             if field in dref_data and dref_data[field] is not None:
                 extracted_data[field] = dref_data[field]
         
-        # Convert to formatted string for AI processing
-        return json.dumps(extracted_data, indent=2, ensure_ascii=False)
+        data_json = json.dumps(extracted_data, indent=2, ensure_ascii=False)
+        
+        # Create messages
+        messages = [
+            {"role": "system", "content": cls.system_message},
+            {"role": "user", "content": f"DREF Data to analyze:\n{data_json}\n\n{cls.operational_summary_prompt}"},
+            {"role": "assistant", "content": "I understand. I will analyze the DREF data and provide a structured summary according to your specifications."}
+        ]
+        
+        # Token count validation
+        message_content = [msg["content"] for msg in messages]
+        text = " ".join(message_content)
+        token_count = cls.count_tokens(text, cls.ENCODING_NAME)
+        logger.info(f"DREF operational token count: {token_count}")
+        
+        if token_count > cls.PROMPT_LENGTH_LIMIT:
+            logger.warning("Prompt too long for operational summary, truncating data")
+            truncated_data = data_json[:cls.PROMPT_DATA_LENGTH_LIMIT]
+            messages[1]["content"] = f"DREF Data to analyze:\n{truncated_data}\n\n{cls.operational_summary_prompt}"
+        
+        # Call OpenAI backend
+        try:
+            client = AzureOpenAiChat()
+            response = client.get_response(messages)
+            
+            if not response:
+                logger.error("No response received for operational summary")
+                return None
+            
+            # Process operational response - take only first 3 non-empty lines
+            lines = response.strip().split('\n')
+            filtered_lines = [line.strip() for line in lines if line.strip()][:3]
+            result = '\n'.join(filtered_lines)
+            
+            logger.info("Successfully generated operational summary")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error generating operational summary: {e}", exc_info=True)
+            return None
 
     @classmethod
-    def extract_budget_data(cls, dref_data: Dict[str, Any]) -> str:
-        """Extract comprehensive budget and financial data from DREF"""
+    def generate_budget_summary(cls, dref_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Generate comprehensive budget and financial summary"""
+        logger.info("Generating DREF budget summary")
+        
+        # Extract budget data
         budget_fields = [
-            'amount_requested',
-            'total_dref_allocation',
-            'budget_file_details',
-            'budget_file_preview',
-            'planned_interventions',
-            'total_targeted_population',
-            'people_in_need',
-            'operation_timeframe',
-            'end_date',
-            'publishing_date',
-            'title',
-            'country_details',
-            'disaster_type_details',
-            'human_resource',
-            'logistic_capacity_of_ns',
-            'coordination_and_partnerships',
-            'pmer'
+            'amount_requested', 'total_dref_allocation', 'budget_file_details', 'budget_file_preview',
+            'planned_interventions', 'total_targeted_population', 'people_in_need', 'operation_timeframe',
+            'end_date', 'publishing_date', 'title', 'country_details', 'disaster_type_details',
+            'human_resource', 'logistic_capacity_of_ns', 'coordination_and_partnerships', 'pmer'
         ]
         
         extracted_data = {}
-        
-        # Extract basic budget data
         for field in budget_fields:
             if field in dref_data and dref_data[field] is not None:
                 extracted_data[field] = dref_data[field]
         
-        # Process planned interventions for comprehensive budget breakdown
+        # Process planned interventions
         if 'planned_interventions' in extracted_data:
             budget_breakdown = []
             total_budget = 0
@@ -223,42 +213,36 @@ class DrefSummaryTask:
             extracted_data['budget_breakdown'] = budget_breakdown
             extracted_data['total_calculated_budget'] = total_budget
         
-        # Convert to formatted string for AI processing
-        return json.dumps(extracted_data, indent=2, ensure_ascii=False)
-
-    @classmethod
-    def generate_summary(cls, prompt: str, data: str, summary_type: str) -> Optional[Any]:
-        """Generate summary using Azure OpenAI"""
-        logger.info(f"Generating DREF {summary_type} summary")
+        data_json = json.dumps(extracted_data, indent=2, ensure_ascii=False)
         
-        def _validate_prompt_length(messages: List[Dict[str, str]]) -> bool:
-            """Validate the length of the prompt"""
-            message_content = [msg["content"] for msg in messages]
-            text = " ".join(message_content)
-            token_count = cls.count_tokens(text, cls.ENCODING_NAME)
-            logger.info(f"DREF {summary_type} token count: {token_count}")
-            return token_count <= cls.PROMPT_LENGTH_LIMIT
-
-        def _create_messages(prompt: str, data: str) -> List[Dict[str, str]]:
-            """Create message structure for OpenAI API"""
-            return [
-                {"role": "system", "content": cls.system_message},
-                {"role": "user", "content": f"DREF Data to analyze:\n{data}\n\n{prompt}"},
-                {
-                    "role": "assistant",
-                    "content": "I understand. I will analyze the DREF data and provide a structured summary according to your specifications."
-                }
-            ]
-
-        def _process_operational_response(response: str) -> str:
-            """Process operational response (plain text, 3 lines max)"""
-            lines = response.strip().split('\n')
-            # Take only first 3 non-empty lines
-            filtered_lines = [line.strip() for line in lines if line.strip()][:3]
-            return '\n'.join(filtered_lines)
-
-        def _process_budget_response(response: str) -> Optional[Dict[str, Any]]:
-            """Process budget response (JSON format)"""
+        # Create messages
+        messages = [
+            {"role": "system", "content": cls.system_message},
+            {"role": "user", "content": f"DREF Data to analyze:\n{data_json}\n\n{cls.budget_summary_prompt}"},
+            {"role": "assistant", "content": "I understand. I will analyze the DREF data and provide a structured summary according to your specifications."}
+        ]
+        
+        # Token count validation
+        message_content = [msg["content"] for msg in messages]
+        text = " ".join(message_content)
+        token_count = cls.count_tokens(text, cls.ENCODING_NAME)
+        logger.info(f"DREF budget token count: {token_count}")
+        
+        if token_count > cls.PROMPT_LENGTH_LIMIT:
+            logger.warning("Prompt too long for budget summary, truncating data")
+            truncated_data = data_json[:cls.PROMPT_DATA_LENGTH_LIMIT]
+            messages[1]["content"] = f"DREF Data to analyze:\n{truncated_data}\n\n{cls.budget_summary_prompt}"
+        
+        # Call OpenAI backend
+        try:
+            client = AzureOpenAiChat()
+            response = client.get_response(messages)
+            
+            if not response:
+                logger.error("No response received for budget summary")
+                return None
+            
+            # Process budget response (JSON format)
             try:
                 # Clean up the response if needed
                 cleaned_response = response.strip()
@@ -269,81 +253,26 @@ class DrefSummaryTask:
                 parsed_response = json.loads(cleaned_response)
                 
                 if isinstance(parsed_response, dict):
+                    logger.info("Successfully generated budget summary")
                     return parsed_response
                 else:
-                    logger.warning(f"Invalid response format for {summary_type}: not a dictionary")
+                    logger.warning("Invalid response format for budget summary: not a dictionary")
                     return None
                     
             except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse JSON response for {summary_type}: {e}")
+                logger.error(f"Failed to parse JSON response for budget summary: {e}")
+                # Try to extract JSON from the response
                 try:
-                    # Try to extract JSON from the response
                     json_match = re.search(r'\{.*\}', response, re.DOTALL)
                     if json_match:
                         return json.loads(json_match.group())
                 except:
                     pass
                 return None
-            except Exception as e:
-                logger.error(f"Error processing response for {summary_type}: {e}")
-                return None
-
-        # Create messages
-        messages = _create_messages(prompt, data)
-        
-        # Validate prompt length
-        if not _validate_prompt_length(messages):
-            logger.warning(f"Prompt too long for {summary_type}, truncating data")
-            # Truncate data if too long
-            truncated_data = data[:cls.PROMPT_DATA_LENGTH_LIMIT]
-            messages = _create_messages(prompt, truncated_data)
-        
-        # Generate response
-        try:
-            client = AzureOpenAiChat()
-            response = client.get_response(messages)
-            
-            if not response:
-                logger.error(f"No response received for {summary_type}")
-                return None
-            
-            # Process response based on summary type
-            if summary_type == "operational":
-                processed_response = _process_operational_response(response)
-                logger.info(f"Successfully generated {summary_type} summary")
-                return processed_response
-            else:  # budget
-                processed_response = _process_budget_response(response)
-                if processed_response:
-                    logger.info(f"Successfully generated {summary_type} summary")
-                    return processed_response
-                else:
-                    logger.error(f"Failed to generate valid {summary_type} summary")
-                    return None
                 
         except Exception as e:
-            logger.error(f"Error generating {summary_type} summary: {e}", exc_info=True)
+            logger.error(f"Error generating budget summary: {e}", exc_info=True)
             return None
-
-    @classmethod
-    def generate_operational_summary(cls, dref_data: Dict[str, Any]) -> Optional[str]:
-        """Generate operational objective and strategy summary (3 lines max)"""
-        operational_data = cls.extract_operational_data(dref_data)
-        return cls.generate_summary(
-            cls.operational_summary_prompt, 
-            operational_data, 
-            "operational"
-        )
-
-    @classmethod
-    def generate_budget_summary(cls, dref_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Generate comprehensive budget and financial summary"""
-        budget_data = cls.extract_budget_data(dref_data)
-        return cls.generate_summary(
-            cls.budget_summary_prompt, 
-            budget_data, 
-            "budget"
-        )
 
     @classmethod
     def generate_dref_summaries(cls, dref_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -358,7 +287,7 @@ class DrefSummaryTask:
         }
         
         try:
-            # Generate operational summary (3 lines max)
+            # Generate operational summary
             operational_summary = cls.generate_operational_summary(dref_data)
             if operational_summary:
                 result["operational_summary"] = operational_summary
@@ -367,7 +296,7 @@ class DrefSummaryTask:
                 result["errors"].append("Failed to generate operational summary")
                 logger.error("Failed to generate operational summary")
             
-            # Generate comprehensive budget summary
+            # Generate budget summary
             budget_summary = cls.generate_budget_summary(dref_data)
             if budget_summary:
                 result["budget_summary"] = budget_summary

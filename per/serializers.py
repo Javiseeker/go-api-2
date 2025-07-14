@@ -1300,10 +1300,10 @@ class PerDrefLLMSummarySerializer(serializers.Serializer):
     """
     DTO for PerDrefLLMSummaryView response containing brief and long summaries.
     
-    briefSummary: Short 3-line operational objectives and strategy summary
-    longSummary: Comprehensive budget and financial analysis (JSON object)
+    operational_summary: Short 3-line operational objectives and strategy summary
+    budget_summary: Comprehensive budget and financial analysis (JSON object)
     metadata: Additional information about the DREF and processing status
     """
-    briefSummary = serializers.CharField(allow_blank=True, required=False)
-    longSummary = serializers.JSONField(required=False)
+    operational_summary = serializers.CharField(allow_blank=True, required=False)
+    budget_summary = serializers.JSONField(required=False)
     metadata = serializers.JSONField(required=False)

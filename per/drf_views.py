@@ -501,17 +501,18 @@ class PerDrefLLMSummaryView(APIView):
                 'event_date': dref_data.event_date,
                 'end_date': getattr(dref_data, 'end_date', None),
                 'planned_interventions': [],
+                # Planned interventions is empty and the following fields are strings:
                 'people_in_need': getattr(dref_data, 'people_in_need', None),
                 'human_resource': getattr(dref_data, 'human_resource', None),
                 'logistic_capacity_of_ns': getattr(dref_data, 'logistic_capacity_of_ns', None),
                 'pmer': getattr(dref_data, 'pmer', None)
             }
             
-            print(f"   ✅ Basic DREF dict created with {len(dref_dict)} fields")
-            print(f"   Key fields check:")
-            print(f"      - operation_objective: {'✅' if dref_dict['operation_objective'] else '❌'} ({len(str(dref_dict['operation_objective'])) if dref_dict['operation_objective'] else 0} chars)")
-            print(f"      - response_strategy: {'✅' if dref_dict['response_strategy'] else '❌'} ({len(str(dref_dict['response_strategy'])) if dref_dict['response_strategy'] else 0} chars)")
-            print(f"      - amount_requested: {'✅' if dref_dict['amount_requested'] else '❌'} ({dref_dict['amount_requested']})")
+            # print(f"   ✅ Basic DREF dict created with {len(dref_dict)} fields")
+            # print(f"   Key fields check:")
+            # print(f"      - operation_objective: {'✅' if dref_dict['operation_objective'] else '❌'} ({len(str(dref_dict['operation_objective'])) if dref_dict['operation_objective'] else 0} chars)")
+            # print(f"      - response_strategy: {'✅' if dref_dict['response_strategy'] else '❌'} ({len(str(dref_dict['response_strategy'])) if dref_dict['response_strategy'] else 0} chars)")
+            # print(f"      - amount_requested: {'✅' if dref_dict['amount_requested'] else '❌'} ({dref_dict['amount_requested']})")
             
             # Add planned interventions if available
             if hasattr(dref_data, 'planned_interventions') and dref_data.planned_interventions:
@@ -535,10 +536,10 @@ class PerDrefLLMSummaryView(APIView):
             print(f"      - Errors: {summaries.get('errors', [])}")
             
             # Step 8: Format response data
-            print(f"\n📦 Step 10: Formatting response data")
+            print(f"\n Step 10: Formatting response data")
             summary_data = {
-                "briefSummary": summaries.get("operational_summary", ""),
-                "longSummary": summaries.get("budget_summary", {})
+                "operational_summary": summaries.get("operational_summary", ""),
+                "budget_summary": summaries.get("budget_summary", {})
             }
             
             # Add metadata for debugging/info
@@ -552,12 +553,7 @@ class PerDrefLLMSummaryView(APIView):
                 "status": summaries.get("status"),
                 "errors": summaries.get("errors", [])
             }
-            
-            print(f"   ✅ Response data formatted:")
-            print(f"      - briefSummary length: {len(summary_data['briefSummary'])} chars")
-            print(f"      - longSummary type: {type(summary_data['longSummary'])}")
-            print(f"      - metadata keys: {list(summary_data['metadata'].keys())}")
-            
+                        
             print(f"\n📋 Step 11: Creating serializer")
             serializer = PerDrefLLMSummarySerializer(summary_data)
             print(f"   ✅ Serializer created successfully")
