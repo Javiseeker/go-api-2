@@ -1,0 +1,863 @@
+[
+{
+        "id": 352,
+        "national_society_actions": [
+            {
+                "id": 167377,
+                "title": "shelter_housing_and_settlements",
+                "image_url": "https://goadmin.ifrc.org/static/images/dref/shelter.png",
+                "title_display": "Shelter, Housing And Settlements",
+                "description": "Earlier, RCSK conducted mitigation works in Kulanak village, Naryn province, in Turan territorial subdivision of Osh city with the support of the Swiss Red Cross , and in Talaa-Bulak village, Jalal-Abad province in the frame of the  European Commission's Directorate-General for European Civil Protection and Humanitarian Aid Operations (DG ECHO) Programmatic Partnership Project (ECHO PPP). Due to these ongoing efforts, fewer people are exposed to the impact of the floods in these areas. \n\nAdditionally, the Local Disaster Management Committees (LDMCs), formed under the same projects in collaboration with RCSK and the Ministry of Emergency Situations, provided assistance to the affected population. Furthermore, the LDMC previously formed in the frame of the projects by the RCSK, together with local residents and the Ministry of Emergency Situations, is carrying out clean-up work after floods. LDMC are also supporting the NDRT in the distribution of kitchen sets, blankets, and mattresses to affected households.",
+                "translation_module_original_language": "en"
+            },
+            {
+                "id": 167378,
+                "title": "coordination",
+                "image_url": "https://goadmin.ifrc.org/static/images/dref/favicon.png",
+                "title_display": "Coordination",
+                "description": "The RCSK team is compiling and sharing situational reports with Movement partners and the Disaster Response Coordination Unit (DRCU) on a regular basis.\nRCSK, as leading agency of the Cash Working Group, is in contact with members to coordinate planned activities in order to avoid duplication.\nOn the ground, RCSK branches collaborate with local authorities, including the Ministry of Emergency Situations and other partners.",
+                "translation_module_original_language": "en"
+            },
+            {
+                "id": 167379,
+                "title": "assessment",
+                "image_url": "https://goadmin.ifrc.org/static/images/dref/favicon.png",
+                "title_display": "Assessment",
+                "description": "Since 21 April, the National Disaster Response Team (NDRT) has been assessing needs of the affected population in close coordination with local population and state partners. In all affected areas, the essential need for hygiene kits was identified, which was also requested by state partners in order to decrease the possibility of the spread of infectious diseases. As household items and kitchens have been damaged, needs for kitchen sets, mattresses, and blankets are also increasing in the families who preferred to stay or are returning to tents next to their homes. The assessment on the level of damage caused to houses and infrastructure is still ongoing, while assessment on the number of damaged cattle and field corps will take even more time to finalise. MoES is mobilizing additional teams and equipment to support the response. State partners are requesting fuel to support cleaning and road maintenance works.",
+                "translation_module_original_language": "en"
+            },
+            {
+                "id": 167380,
+                "title": "water_sanitation_and_hygiene",
+                "image_url": "https://goadmin.ifrc.org/static/images/dref/water.png",
+                "title_display": "Water, Sanitation And Hygiene",
+                "description": "RCSK has identified the need for hygiene kits, dignity kits (feminine hygiene pads), disinfectants, baby and adult diapers. Starting from 21 April, the NDRT is distributing hygiene kits from its available stocks, along with conducting awareness raising sessions on Water, Sanitation, and Hygiene.\n\nIn Osh province, 315 hygiene kits, 160 kitchen kits, 63 mattresses, and 160 blankets were distributed, as well as 100 kg of chlorine for disinfection works were handed over to the Ministry of Emergency Situations.\n\nIn Jalal-Abad province, 60 hygiene and kitchen sets, in Talas province 150 hygiene kits and 60 mattresses, and in Batken province 21 hygiene kits and  buckets as well as 42 jerrycans and grain bags were distributed. \n\nDue to the ongoing activities, the data on distribution and people reached  is changing rapidly, as response activities depend on the identified needs as well as the availability of the stock.",
+                "translation_module_original_language": "en"
+            }
+        ],
+        "needs_identified": [
+            {
+                "id": 131104,
+                "image_url": "https://goadmin.ifrc.org/static/images/dref/health.png",
+                "title_display": "Health",
+                "title": "health",
+                "description": "Lack of awareness of the affected population on the importance of sanitary and hygiene, as well as the lack of capacity of the local health facilities to conduct mass mobilization of resources in an event of a disaster are some of the main health-related concerns of the country. \n\nConsidering the epidemic situation of measles, which exceeded more than 8,200 hospitalized people since January, the RCSK will closely coordinate and plan its activities along with ongoing vaccination campaigns in the same sites. The sessions on vaccination promotion will be held during household visits and printing materials posted on the public buildings, as local administration, primary health care centres, mosques, schools, and others where applicable.\n\nThe provision of psychosocial support and psychological first aid (PFA) are also essential needs of people experiencing traumatic events and are important steps, along with other basic services, which should be accessible for both the affected population and hosting communities. Recognizing this need and PFA, the RCSK will be providing PFA and refer to specialists when deemed necessary. Staff and volunteers engaged in the response will be trained via short sessions on stress management, conducted by a psychologist.",
+                "translation_module_original_language": "en"
+            },
+            {
+                "id": 131099,
+                "image_url": "https://goadmin.ifrc.org/static/images/dref/protection.png",
+                "title_display": "Protection, Gender And Inclusion",
+                "title": "protection_gender_and_inclusion",
+                "description": "Gender-sensitive assistance: Given that women and men may experience different types of vulnerability during a disaster, it is necessary to analyse which gender dimensions affect people's ability to protect and recover. For example, women often have different social and economic roles that may affect their access to resources and opportunities to receive assistance during a disaster.\n\nInclusivity: Special attention should be paid to the needs of people with disabilities (PWDs), as well as other other groups in vulnerable situations, such as older people, children, ethnic communities, and migrants. This includes ensuring access to shelters, food and medical care, considering their needs.\n\nTraining and information: Training and information should be provided on disaster prevention activities, including early warning of potential hazards and rules of behavior in the event of a crisis. This information should be available in all languages and adapted to the needs of different population groups.\nNDRT teams are represented by male and female members knowing local languages visiting affected villages, so that community members feel safe.",
+                "translation_module_original_language": "en"
+            },
+            {
+                "id": 131100,
+                "image_url": "https://goadmin.ifrc.org/static/images/dref/participation_team.png",
+                "title_display": "Community Engagement And Accountability",
+                "title": "community_engagement_and_accountability",
+                "description": "As a result of frequent electricity cuts and damaged roads, the need for access to feedback mechanisms may increase. RCSK ensures that community members have equal access to information, services, and assistance provided by making information available in local languages and establishing feedback mechanisms to enable the provision of feedback. RCSK staff and volunteers are wearing local-context appropriate clothing with the RCSK emblem.\n\nThe team has necessary information in local languages in case of request. Feedback mechanisms are put in place, enabling widespread access and the ability to provide feedback to the RCSK. All team members are using proper clothing for local context and uses clearly marked with logo uniform of the RCSK.",
+                "translation_module_original_language": "en"
+            },
+            {
+                "id": 131101,
+                "image_url": "https://goadmin.ifrc.org/static/images/dref/water.png",
+                "title_display": "Water, Sanitation And Hygiene",
+                "title": "water_sanitation_and_hygiene",
+                "description": "Access to clean drinking water may become an increasing need among the affected population due to water contamination in rural areas and regular cuts of drinking water supply in cities. \n\nSanitation, Hygiene, and Education: The likelihood of spread of waterborne diseases in flood-situations are high. Challenges may arise due to lack of information on hygiene practices or low awareness among the population. Furthermore, as people begin to clean their houses and neigbourhoods, exposure to various hazards and injuries may rise. To prevent the spread of infections, the need to ensure proper sanitary conditions by providing essential hygiene and sanitary items, as well as information and education on hygiene and safe behaviour are essential",
+                "translation_module_original_language": "en"
+            },
+            {
+                "id": 131102,
+                "image_url": "https://goadmin.ifrc.org/static/images/dref/risk.png",
+                "title_display": "Risk Reduction, Climate Adaptation And Recovery",
+                "title": "risk_reduction_climate_adaptation_and_recovery",
+                "description": "Due to abundant floods, the re-flooding has partially damaged some channels. As a result, forecasted rains and floods for the upcoming days may bring more danger.",
+                "translation_module_original_language": "en"
+            },
+            {
+                "id": 131103,
+                "image_url": "https://goadmin.ifrc.org/static/images/dref/cash.png",
+                "title_display": "Multi purpose cash grants",
+                "title": "multi_purpose_cash_grants",
+                "description": "The multi-purpose cash grants will target the most vulnerable households among affected families to cover their basic needs which after disaster might be different. Considering functional markets in the affected provinces, cash assistance would be the most suitable which would consider dignity and satisfy needs accordingly. Based on previous experience with multi-purpose cash assistance under the 2023 DREF in Issyk-Kul, the RCSK has identified that this is the most preferred form of assistance, as it provides choice, preserves dignity, covers all needs, and increases the financial capacity of people assisted. Most people whose homes were not destroyed will choose to return to their houses if there are no further risks, as they need to take care of their livestock and farms and cannot stay away from home for too long. Some of those whose houses were severely damaged are temporarily staying with their relatives or fellow villagers. Cash assistance under this DREF will enable people to cover their basic needs according to their needs and priorities, including possible house repair works, health issues, or the restoration of their agriculture, food items, as well as general livelihoods.",
+                "translation_module_original_language": "en"
+            }
+        ],
+        "planned_interventions": [
+            {
+                "id": 176074,
+                "image_url": "https://goadmin.ifrc.org/static/images/dref/protection.png",
+                "indicators": [
+                    {
+                        "id": 450735,
+                        "target": 90,
+                        "actual": null,
+                        "translation_module_original_language": "en",
+                        "translation_module_skip_auto_translation": false,
+                        "title": "Percentage of job satisfaction among employees and volunteers of the Red Crescent Society of Kyrgyzstan"
+                    },
+                    {
+                        "id": 450736,
+                        "target": 95,
+                        "actual": null,
+                        "translation_module_original_language": "en",
+                        "translation_module_skip_auto_translation": false,
+                        "title": "Percentage of recipients who felt safe during the distribution of aid"
+                    },
+                    {
+                        "id": 450737,
+                        "target": 90,
+                        "actual": null,
+                        "translation_module_original_language": "en",
+                        "translation_module_skip_auto_translation": false,
+                        "title": "Percentage of recipients who believe that all conditions were in place under the Protection, Gender and Inclusion component"
+                    }
+                ],
+                "title_display": "Protection, Gender And Inclusion",
+                "person_targeted": 103901,
+                "person_assisted": null,
+                "budget": 0,
+                "male": null,
+                "female": null,
+                "translation_module_original_language": "en",
+                "translation_module_skip_auto_translation": false,
+                "description": "To ensure equal assistance, the Protection, Gender and Inclusion component will be integrated in all response activities, including distributions. Within the framework of the DREF, four types of distributions, two types of trainings, two focus group discussions, as well as other types of information sessions will be held. In each of these activities, CEA/PGI components will be used, such as feedback collection, Post-Distribution Monitoring (PDM), Exit survey, and quality survey.\n\nTraining will be provided and information shared on disaster prevention measures, including early warning of potential hazards and rules of behaviour in the event of a crisis. The information will be available in various languages and will be adapted to the needs of different population groups, considering their local culture and context. Ethnic groups will be provided with special assistance to ensure their safe access and increase their trust. Activities implemented will consider protection related issues, including physical safety and access, as well as protection of personal data.",
+                "progress_towards_outcome": null,
+                "lessons_learnt": null,
+                "narrative_description_of_achievements": null,
+                "title": "protection_gender_and_inclusion",
+                "challenges": null
+            },
+            {
+                "id": 176075,
+                "image_url": "https://goadmin.ifrc.org/static/images/dref/participation_team.png",
+                "indicators": [
+                    {
+                        "id": 450738,
+                        "target": 16,
+                        "actual": null,
+                        "translation_module_original_language": "en",
+                        "translation_module_skip_auto_translation": false,
+                        "title": "Number of people involved in the focus group discussions (men and woman)"
+                    }
+                ],
+                "title_display": "Community Engagement And Accountability",
+                "person_targeted": 103901,
+                "person_assisted": null,
+                "budget": 10166,
+                "male": null,
+                "female": null,
+                "translation_module_original_language": "en",
+                "translation_module_skip_auto_translation": false,
+                "description": "The following activities will be conducted under the Community Engagement and Accountability component:\n\nFeedback collection:\n- Activating various channels for collecting feedback such as feedback boxes, helpline, PDM survey, focus groups and others.\n- Organize a feedback system to collect opinions, suggestions and complaints from communities about the services and activities provided.\n\nFocus groups and discussions:\n- Conducting focus groups and discussions with community representatives to identify their needs, preferences and expectations from project or programme activities.\n- Organize open dialogues to discuss key issues and find joint solutions with community members and stakeholders.\n\nVerification of people assisted:\n- Conducting verification of recipients of assistance or services to ensure their adequacy and compliance with selection criteria.\n- Assessing the real needs and living conditions of people assisted to ensure their applicability. Collected feedback will be timely shared with relevant staff and activities adjusted in case of need.",
+                "progress_towards_outcome": null,
+                "lessons_learnt": null,
+                "narrative_description_of_achievements": null,
+                "title": "community_engagement_and_accountability",
+                "challenges": null
+            },
+            {
+                "id": 176076,
+                "image_url": "https://goadmin.ifrc.org/static/images/dref/independence.png",
+                "indicators": [
+                    {
+                        "id": 450739,
+                        "target": 230,
+                        "actual": null,
+                        "translation_module_original_language": "en",
+                        "translation_module_skip_auto_translation": false,
+                        "title": "Number of staff and volunteers involved in the response"
+                    },
+                    {
+                        "id": 450740,
+                        "target": 1,
+                        "actual": null,
+                        "translation_module_original_language": "en",
+                        "translation_module_skip_auto_translation": false,
+                        "title": "Number of lessons learned workshops conducted"
+                    }
+                ],
+                "title_display": "National Society Strengthening",
+                "person_targeted": null,
+                "person_assisted": null,
+                "budget": 69160,
+                "male": null,
+                "female": null,
+                "translation_module_original_language": "en",
+                "translation_module_skip_auto_translation": false,
+                "description": "As part of National Society Strengthening, a total number of 230 volunteers and staff (approximately 200 volunteers and 30 employees) are estimated to be deployed to support the disaster response.\n\nAt the end of the response, a lessons learned workshop will be conducted to take stock of the learnings and best practices of the operation.",
+                "progress_towards_outcome": null,
+                "lessons_learnt": null,
+                "narrative_description_of_achievements": null,
+                "title": "national_society_strengthening",
+                "challenges": null
+            },
+            {
+                "id": 176077,
+                "image_url": "https://goadmin.ifrc.org/static/images/dref/work.png",
+                "indicators": [],
+                "title_display": "Secretariat Services",
+                "person_targeted": null,
+                "person_assisted": null,
+                "budget": 2174,
+                "male": null,
+                "female": null,
+                "translation_module_original_language": "en",
+                "translation_module_skip_auto_translation": false,
+                "description": "IFRC financial charges and foreign exchange (FX) loses.",
+                "progress_towards_outcome": null,
+                "lessons_learnt": null,
+                "narrative_description_of_achievements": null,
+                "title": "secretariat_services",
+                "challenges": null
+            },
+            {
+                "id": 176078,
+                "image_url": "https://goadmin.ifrc.org/static/images/dref/health.png",
+                "indicators": [
+                    {
+                        "id": 450741,
+                        "target": 24,
+                        "actual": null,
+                        "translation_module_original_language": "en",
+                        "translation_module_skip_auto_translation": false,
+                        "title": "Number of PSS sessions conducted for affected population"
+                    },
+                    {
+                        "id": 450742,
+                        "target": 70,
+                        "actual": null,
+                        "translation_module_original_language": "en",
+                        "translation_module_skip_auto_translation": false,
+                        "title": "Number of PSS briefings conducted for NDRT members"
+                    },
+                    {
+                        "id": 450743,
+                        "target": 42,
+                        "actual": null,
+                        "translation_module_original_language": "en",
+                        "translation_module_skip_auto_translation": false,
+                        "title": "Number of Health promotion activities (information sessions, trainings) conducted"
+                    },
+                    {
+                        "id": 450744,
+                        "target": 42,
+                        "actual": null,
+                        "translation_module_original_language": "en",
+                        "translation_module_skip_auto_translation": false,
+                        "title": "Number of First Aid master classes conducted for affected communities"
+                    },
+                    {
+                        "id": 450745,
+                        "target": 90,
+                        "actual": null,
+                        "translation_module_original_language": "en",
+                        "translation_module_skip_auto_translation": false,
+                        "title": "Percentage of participants who were satisfied with the quality of the training/information session"
+                    }
+                ],
+                "title_display": "Health",
+                "person_targeted": 6000,
+                "person_assisted": null,
+                "budget": 12914,
+                "male": null,
+                "female": null,
+                "translation_module_original_language": "en",
+                "translation_module_skip_auto_translation": false,
+                "description": "Under Health, the following activities will be implemented as part of the response: \n\n1) Information campaigns on disease prevention:\n- Organizing information sessions conducted by volunteers on disease prevention and basic sanitation measures.\n- Dissemination by mass media resources and social media to disseminate information, including television, radio and print media.\n- Information boards on routine measles and rubella vaccinations will be set up in the centres of the affected villages and districts.\n- The volunteers will encourage people to get routine vaccination, especially measles and rubella, and parents of children under six to get their children vaccinated, according to their age as per the immunization schedule of the Kyrgyz Republic. \n\n2) The method of conducting group sessions with the participation of a psychologist from RCSK. The groups will be divided into different groups based on age and gender. In case of individual referrals from affected people, RCSK psychologists will also provide counselling and referral to MHPSS services at the appropriate level. During the session, feedback boxes and a banner will be installed in the room. At the end, the training/session will be evaluated within the framework of the CEA component.\n\n3) Psychosocial briefings for staff and volunteers on a regular basis:\n- Briefings and sessions for staff and volunteers on psychosocial support to prevent burnout and emotional overstress while working with affected population in disaster area. \n\n4) Sessions to teach basic first aid skills for affected communities. Training will be providing by FA staff and volunteers. After master class head of rural communities will be equipped with FA kits (five kits) to respond to possible injures during cleaning and restoration works.\n\nThese events will not be held as stand-alone events, but as part of community mobilization by volunteers when they visit temporary settlements and affected households to distribute CVA.",
+                "progress_towards_outcome": null,
+                "lessons_learnt": null,
+                "narrative_description_of_achievements": null,
+                "title": "health",
+                "challenges": null
+            },
+            {
+                "id": 176079,
+                "image_url": "https://goadmin.ifrc.org/static/images/dref/water.png",
+                "indicators": [
+                    {
+                        "id": 450746,
+                        "target": 42,
+                        "actual": null,
+                        "translation_module_original_language": "en",
+                        "translation_module_skip_auto_translation": false,
+                        "title": "Number of hygiene promotion activities (information sessions, trainings) conducted"
+                    },
+                    {
+                        "id": 450747,
+                        "target": 900,
+                        "actual": null,
+                        "translation_module_original_language": "en",
+                        "translation_module_skip_auto_translation": false,
+                        "title": "Number of hygiene kits purchased and replenished"
+                    },
+                    {
+                        "id": 450748,
+                        "target": 90,
+                        "actual": null,
+                        "translation_module_original_language": "en",
+                        "translation_module_skip_auto_translation": false,
+                        "title": "Percentage of participants who were satisfied with the quality of the training/information session"
+                    }
+                ],
+                "title_display": "Water, Sanitation And Hygiene",
+                "person_targeted": 6000,
+                "person_assisted": null,
+                "budget": 27535,
+                "male": null,
+                "female": null,
+                "translation_module_original_language": "en",
+                "translation_module_skip_auto_translation": false,
+                "description": "Hygiene promotion among affected households and hosting community will be implemented as part of an integrated approach when conducting household visits and distributions. Leaflets and information boards will be installed in public places and information will also be disseminated using mass media resources and social media. Feedback boxes and a banner will be also installed; the feedback will be evaluated in line with the CEA component detailed above.",
+                "progress_towards_outcome": null,
+                "lessons_learnt": null,
+                "narrative_description_of_achievements": null,
+                "title": "water_sanitation_and_hygiene",
+                "challenges": null
+            },
+            {
+                "id": 176080,
+                "image_url": "https://goadmin.ifrc.org/static/images/dref/risk.png",
+                "indicators": [],
+                "title_display": "Risk Reduction, Climate Adaptation And Recovery",
+                "person_targeted": 103901,
+                "person_assisted": null,
+                "budget": 15110,
+                "male": null,
+                "female": null,
+                "translation_module_original_language": "en",
+                "translation_module_skip_auto_translation": false,
+                "description": "All response activities will be conducted with consideration of green policies. Dissemination of information on early warning system, evacuation, heatwave, and other necessary safety measures will be also ensured.",
+                "progress_towards_outcome": null,
+                "lessons_learnt": null,
+                "narrative_description_of_achievements": null,
+                "title": "risk_reduction_climate_adaptation_and_recovery",
+                "challenges": null
+            },
+            {
+                "id": 176081,
+                "image_url": "https://goadmin.ifrc.org/static/images/dref/shelter.png",
+                "indicators": [
+                    {
+                        "id": 450749,
+                        "target": 123,
+                        "actual": null,
+                        "translation_module_original_language": "en",
+                        "translation_module_skip_auto_translation": false,
+                        "title": "Number of mattresses replenished"
+                    },
+                    {
+                        "id": 450750,
+                        "target": 160,
+                        "actual": null,
+                        "translation_module_original_language": "en",
+                        "translation_module_skip_auto_translation": false,
+                        "title": "Number of blankets replenished"
+                    }
+                ],
+                "title_display": "Shelter Housing And Settlements",
+                "person_targeted": 160,
+                "person_assisted": null,
+                "budget": 5283,
+                "male": null,
+                "female": null,
+                "translation_module_original_language": "en",
+                "translation_module_skip_auto_translation": false,
+                "description": "Starting from 21 April, the NDRT has been distributing hygiene kits from available stocks, as well as conducting awareness sessions on Shelter. \nThe following items have been distributed and will be replenished via the DREF:\n- Osh province - 63 mattresses and 160 blankets; \n- Talas province - 60 mattresses.\n\nA PDM exercise will be held two weeks after the distribution within the framework of the CEA component.",
+                "progress_towards_outcome": null,
+                "lessons_learnt": null,
+                "narrative_description_of_achievements": null,
+                "title": "shelter_housing_and_settlements",
+                "challenges": null
+            },
+            {
+                "id": 176082,
+                "image_url": "https://goadmin.ifrc.org/static/images/dref/cash.png",
+                "indicators": [
+                    {
+                        "id": 450751,
+                        "target": 840,
+                        "actual": null,
+                        "translation_module_original_language": "en",
+                        "translation_module_skip_auto_translation": false,
+                        "title": "Number of families supported with purpose cash grants"
+                    },
+                    {
+                        "id": 450752,
+                        "target": 90,
+                        "actual": null,
+                        "translation_module_original_language": "en",
+                        "translation_module_skip_auto_translation": false,
+                        "title": "Percentage of job satisfaction among employees and volunteers of the Red Crescent Society of Kyrgyzstan"
+                    },
+                    {
+                        "id": 450753,
+                        "target": 95,
+                        "actual": null,
+                        "translation_module_original_language": "en",
+                        "translation_module_skip_auto_translation": false,
+                        "title": "Percentage of recipients who felt safe during the distribution of aid"
+                    },
+                    {
+                        "id": 450754,
+                        "target": 90,
+                        "actual": null,
+                        "translation_module_original_language": "en",
+                        "translation_module_skip_auto_translation": false,
+                        "title": "Percentage of recipients who believe that all conditions were in place under the Protection, Gender, and Inclusion component"
+                    }
+                ],
+                "title_display": "Multi Purpose Cash",
+                "person_targeted": 4200,
+                "person_assisted": null,
+                "budget": 229195,
+                "male": null,
+                "female": null,
+                "translation_module_original_language": "en",
+                "translation_module_skip_auto_translation": false,
+                "description": "At the time of the DREF application, damage has not been reporting in relation to the infrastructure of financial service providers and markets. The major markets and financial institutions continue to operate without disruption, ensuring local communities have continued access to essential services and goods.\n\nPriority is placed on multi-purpose cash assistance, as it effectively addresses various needs of affected families. Previous experiences of RCSK and feedback from satisfaction surveys highlight the preference for cash assistance over in-kind support due to its empowering nature and preservation of dignity.\n\nDisaster-affected individuals can address their essential needs, including food, housing recovery, storage sheds, and farming necessities. An assumed cash assistance of KGS 25,000 (CHF 255) per family for 840 families has been calculated. This figure was derived from data provided by the National Statistics Committee on the minimum consumer basket for the first quarter of 2024, considering an average family size of five individuals. Anticipated inflation, estimated at 5 per cent for the first quarter by the National Bank was factored into the aid calculation. Additionally, the Cashhub deduction formula was applied. Consequently, a total aid amount of KGS 25,000, covering 66 per cent of the identified needs has been estimated, which represent one-third of the overall requirements. This assistance is allocated per family for one month. \n\nThe minimum consumer basket for one person for the first quarter in Kyrgyzstan according to the National Statistics Committee is:\n- Food - KGS 5,050(CHF 51,56)*5(people)= KGZ 25,249.8 (CHF 257,8) \u00a0\n- Essential household items - KGS 1,243.1 (CHF 12,69) *5 (people)= KGZ 6,215 (CHF 63.45) \n- Other expenses - KGS 1,476.14 (CHF 15,07)\n- Unmet emergency needs - 10 per cent - CHF 336.32+10%= CHF 369.95 \n- Inflation - 5 per cent - CHF 369.95 +5 per cent=CHF 388.45 \n- Expenses coverage - 66 per cent (20 days) =CHF 388.45 - 34 per cent =approx. CHF 255\n\nThis should be calculated for one family of five people. Further detailed calculations will be provided in a separate document. Since there is no available information on whether the government and other organizations will provide cash assistance, the amount of assistance may change depending on external factors that are beyond RCSK's control.\n\nIt is also worth noting that the 10 per cent income tax can be avoided by officially certifying the list of people assisted through the Ministry of Social Protection. The cash assistance will be delivered through banks via cashier's offices, where people assisted can receive funds by presenting their passports. \n\nIn September 2023, the RCSK held a tender for the selection of a financial services provider (FSP), where a commission was established and observers from the IFRC and the Swiss Red Cross were invited. Based on this tender, Aiyl Bank was selected. The framework agreement with the bank is valid until 31 December 2025 with an option to extend it for an additional two years. Accordingly, Aiyl Bank is the preferred financial service provider due to this existing two-year framework agreement, their extensive experience, broad national coverage, and low service fees, facilitating a streamlined distribution process.\n\nThe CEA/PGI component will be integrated throughout the entire process, from inception to conclusion, encompassing all questionnaires and monitoring to identify key success indicators. During the distribution, feedback boxes and a banners will be installed in the bank offices. Staff and volunteers (10 branch staff and 30 volunteers in each branch) will conduct an exit survey and a PDM.",
+                "progress_towards_outcome": null,
+                "lessons_learnt": null,
+                "narrative_description_of_achievements": null,
+                "title": "multi_purpose_cash",
+                "challenges": null
+            },
+            {
+                "id": 176083,
+                "image_url": "https://goadmin.ifrc.org/static/images/dref/coordination.png",
+                "indicators": [],
+                "title_display": "Coordination And Partnerships",
+                "person_targeted": null,
+                "person_assisted": null,
+                "budget": 13045,
+                "male": null,
+                "female": null,
+                "translation_module_original_language": "en",
+                "translation_module_skip_auto_translation": false,
+                "description": "This component includes monitoring and technical support provided by IFRC, including Information Management and Planning, Monitoring, Evaluation and Reporting support",
+                "progress_towards_outcome": null,
+                "lessons_learnt": null,
+                "narrative_description_of_achievements": null,
+                "title": "coordination_and_partnerships",
+                "challenges": null
+            },
+            {
+                "id": 176084,
+                "image_url": "https://goadmin.ifrc.org/static/images/dref/livelihood.png",
+                "indicators": [
+                    {
+                        "id": 450755,
+                        "target": 200,
+                        "actual": null,
+                        "translation_module_original_language": "en",
+                        "translation_module_skip_auto_translation": false,
+                        "title": "Number of kitchen sets replenished"
+                    }
+                ],
+                "title_display": "Livelihoods And Basic Needs",
+                "person_targeted": 200,
+                "person_assisted": null,
+                "budget": 4566,
+                "male": null,
+                "female": null,
+                "translation_module_original_language": "en",
+                "translation_module_skip_auto_translation": false,
+                "description": "Kitchen sets have been distributed to affected families from RCSK's stocks, which will be replenished. \nA PDM will be held two weeks after the distribution within the framework of the CEA component.",
+                "progress_towards_outcome": null,
+                "lessons_learnt": null,
+                "narrative_description_of_achievements": null,
+                "title": "livelihoods_and_basic_needs",
+                "challenges": null
+            }
+        ],
+        "type_of_onset_display": "Sudden",
+        "type_of_dref_display": "Response",
+        "disaster_category_display": "Yellow",
+        "status_display": "Completed",
+        "modified_by_details": {
+            "id": 7617,
+            "username": "dora.veto@ifrc.org",
+            "first_name": "Dora",
+            "last_name": "Veto"
+        },
+        "event_map_file": {
+            "id": 6025,
+            "created_by_details": {
+                "id": 7617,
+                "username": "dora.veto@ifrc.org",
+                "first_name": "Dora",
+                "last_name": "Veto"
+            },
+            "file": "https://prddsgofilestorage.blob.core.windows.net/api/dref/images/DREF_Kyrgyzstan_FL2.png",
+            "client_id": "5842",
+            "translation_module_original_language": "en",
+            "translation_module_skip_auto_translation": false,
+            "created_by": 7617,
+            "caption": "Map of the targeted areas by the DREF operation."
+        },
+        "disaster_category_analysis_details": null,
+        "targeting_strategy_support_file_details": null,
+        "images_file": [
+            {
+                "id": 5836,
+                "created_by_details": {
+                    "id": 7067,
+                    "username": "a.azamatov@redcrescent.kg",
+                    "first_name": "Adilet",
+                    "last_name": "Azamatov"
+                },
+                "file": "https://prddsgofilestorage.blob.core.windows.net/api/dref/images/%D0%98%D0%B7%D0%BE%D0%B1%D1%80%D0%B0%D0%B6%D0%B5%D0%BD%D0%B8%D0%B5%20WhatsApp%202024-04-22%20%D0%B2%2017.53.05_430e8286.jpg",
+                "client_id": "5836",
+                "translation_module_original_language": "en",
+                "translation_module_skip_auto_translation": false,
+                "created_by": 7067,
+                "caption": "RCSK employees distribute humanitarian aid. Photo credit: RCSK"
+            },
+            {
+                "id": 5837,
+                "created_by_details": {
+                    "id": 7067,
+                    "username": "a.azamatov@redcrescent.kg",
+                    "first_name": "Adilet",
+                    "last_name": "Azamatov"
+                },
+                "file": "https://prddsgofilestorage.blob.core.windows.net/api/dref/images/%D0%98%D0%B7%D0%BE%D0%B1%D1%80%D0%B0%D0%B6%D0%B5%D0%BD%D0%B8%D0%B5%20WhatsApp%202024-04-23%20%D0%B2%2012.36.38_5cf537d5.jpg",
+                "client_id": "5837",
+                "translation_module_original_language": "en",
+                "translation_module_skip_auto_translation": false,
+                "created_by": 7067,
+                "caption": "Photo showing how the mudflows have extensively damaged and destroyed houses. Photo credit: RCSK."
+            }
+        ],
+        "created_by_details": {
+            "id": 7067,
+            "username": "a.azamatov@redcrescent.kg",
+            "first_name": "Adilet",
+            "last_name": "Azamatov"
+        },
+        "users_details": [
+            {
+                "id": 11522,
+                "username": "b.rysbekuulu@redcrescent.kg",
+                "first_name": "Beikut",
+                "last_name": "Rysbek uulu"
+            },
+            {
+                "id": 9775,
+                "username": "nurlan.jumaliev@ifrc.org",
+                "first_name": "Nurlan",
+                "last_name": "Jumaliev"
+            }
+        ],
+        "budget_file_details": {
+            "id": 6045,
+            "created_by_details": {
+                "id": 7617,
+                "username": "dora.veto@ifrc.org",
+                "first_name": "Dora",
+                "last_name": "Veto"
+            },
+            "file": "https://prddsgofilestorage.blob.core.windows.net/api/dref/images/Budget%20summary_Kyrgyzstan%20Floods_validated%20-%20APPROVED.pdf",
+            "client_id": null,
+            "translation_module_original_language": "en",
+            "translation_module_skip_auto_translation": false,
+            "created_by": 7617,
+            "caption": null
+        },
+        "cover_image_file": {
+            "id": 5875,
+            "created_by_details": {
+                "id": 7067,
+                "username": "a.azamatov@redcrescent.kg",
+                "first_name": "Adilet",
+                "last_name": "Azamatov"
+            },
+            "file": "https://prddsgofilestorage.blob.core.windows.net/api/dref/images/%D0%98%D0%B7%D0%BE%D0%B1%D1%80%D0%B0%D0%B6%D0%B5%D0%BD%D0%B8%D0%B5%20WhatsApp%202024-04-25%20%D0%B2%2017.24.18_4a0e8399.jpg",
+            "client_id": "jn1z0d3y0jbwqkbf",
+            "translation_module_original_language": "en",
+            "translation_module_skip_auto_translation": false,
+            "created_by": 7067,
+            "caption": "The April floods in Kyrgyzstan have caused extensive damage. Photo credit: The Red Crescent Society of Kyrgyzstan (RCSK)"
+        },
+        "disaster_type_details": {
+            "id": 12,
+            "name": "Flood",
+            "summary": "",
+            "translation_module_original_language": "en"
+        },
+        "operational_update_details": [
+            {
+                "id": 196,
+                "is_published": true,
+                "operational_update_number": 1,
+                "title": "Kyrgyzstan Flood 2024",
+                "translation_module_original_language": "en"
+            }
+        ],
+        "final_report_details": {
+            "id": 172,
+            "is_published": false,
+            "title": "Kyrgyzstan Flood 2024",
+            "translation_module_original_language": "en"
+        },
+        "country_details": {
+            "iso": "KG",
+            "iso3": "KGZ",
+            "id": 98,
+            "record_type": 1,
+            "record_type_display": "Country",
+            "region": 3,
+            "independent": true,
+            "is_deprecated": false,
+            "fdrs": "DKG001",
+            "average_household_size": null,
+            "name": "Kyrgyzstan",
+            "society_name": "Red Crescent Society of Kyrgyzstan",
+            "translation_module_original_language": "en"
+        },
+        "district_details": [
+            {
+                "name": "Batken",
+                "code": "KG001",
+                "id": 1471,
+                "is_enclave": false,
+                "is_deprecated": false
+            },
+            {
+                "name": "Jalal-Abad",
+                "code": "KG004",
+                "id": 1474,
+                "is_enclave": false,
+                "is_deprecated": false
+            },
+            {
+                "name": "Naryn",
+                "code": "KG005",
+                "id": 1475,
+                "is_enclave": false,
+                "is_deprecated": false
+            },
+            {
+                "name": "Osh",
+                "code": "KG006",
+                "id": 1476,
+                "is_enclave": false,
+                "is_deprecated": false
+            },
+            {
+                "name": "Talas",
+                "code": "KG007",
+                "id": 1478,
+                "is_enclave": false,
+                "is_deprecated": false
+            },
+            {
+                "name": "Osh City",
+                "code": "KG009",
+                "id": 1477,
+                "is_enclave": false,
+                "is_deprecated": false
+            }
+        ],
+        "assessment_report_details": null,
+        "supporting_document_details": null,
+        "risk_security": [
+            {
+                "id": 95953,
+                "client_id": "jd4yquqd9ayfwebs",
+                "translation_module_original_language": "en",
+                "translation_module_skip_auto_translation": false,
+                "risk": "Based on past experiences, there are no significant risks to note regarding the safety of recipients after receiving cash assistance. However, it will be important to conduct information sessions on basic safety protocols for managing money. While no incidents of theft or loss have been reported, including this aspect in risk prevention measures is prudent.",
+                "mitigation": "Information sessions before encashment."
+            },
+            {
+                "id": 95954,
+                "client_id": "culq4iiclamdajfl",
+                "translation_module_original_language": "en",
+                "translation_module_skip_auto_translation": false,
+                "risk": "The risk of extortion for the assistance provided.",
+                "mitigation": "As part of the work to protect the recipients who are in the most vulnerable situations, flyers will be issued at the entrance of the distribution points. The flyers will include phone numbers of the RCSK helpline and the objective of the assistance. Furthermore, information provided will highlight that recipients do not have to pay for the assistance received."
+            },
+            {
+                "id": 95955,
+                "client_id": "uboz04ze8uj1cwjs",
+                "translation_module_original_language": "en",
+                "translation_module_skip_auto_translation": false,
+                "risk": "Inadequate enforcement of sanitation and hygiene standards can increase the risk of infectious, zoonotic, as well as vaccine- preventable disease outbreaks which might affect and worsen public health.",
+                "mitigation": "Provide awareness sessions, distribute printing materials to the population on sanitation and hygiene, as well as hygiene kits. Closely cooperate with relevant state structures and cooperate on provision of access to clean water, health services, and veterinary services."
+            },
+            {
+                "id": 95956,
+                "client_id": "uwky71ccw0hyo1pv",
+                "translation_module_original_language": "en",
+                "translation_module_skip_auto_translation": false,
+                "risk": "According to the weather forecast, there is a possibility of further rainfall, which could lead to additional damage to infrastructure or affect more people. It is essential to note that volunteers and staff conducting fieldwork may also be at risk if sudden rainfall triggers landslides or flooding during their operations.",
+                "mitigation": "Close coordination with Hydrometeorological services and the Ministry of Emergency is vital. Information sharing between partners is essential for better preparedness. Currently, state partners are conducting mitigation works where necessary, and RCSK is providing support where relevant. Additionally, prior to each field deployment, RCSK will verify the weather forecast provided by the Hydrometeorological Service under the Ministry of Emergency to ensure the safety of all personnel involved."
+            }
+        ],
+        "modified_at": "2024-05-06T07:46:56.619233Z",
+        "dref_access_user_list": [
+            11522,
+            7067,
+            9775
+        ],
+        "source_information": [],
+        "scenario_analysis_supporting_document_details": null,
+        "contingency_plans_supporting_document_details": null,
+        "proposed_action": [],
+        "created_at": "2024-04-23T16:52:56.915999Z",
+        "type_of_dref": 2,
+        "type_of_onset": 2,
+        "is_dref_imminent_v2": false,
+        "disaster_category": 0,
+        "status": 1,
+        "num_assisted": null,
+        "num_affected": 103901,
+        "estimated_number_of_affected_male": null,
+        "estimated_number_of_affected_female": null,
+        "estimated_number_of_affected_girls_under_18": null,
+        "estimated_number_of_affected_boys_under_18": null,
+        "amount_requested": 389148,
+        "people_in_need": 4200,
+        "emergency_appeal_planned": false,
+        "event_date": "2024-04-21",
+        "ns_respond_date": "2024-04-21",
+        "did_it_affect_same_area": false,
+        "did_it_affect_same_population": null,
+        "affect_same_population_text": null,
+        "did_ns_respond": null,
+        "did_ns_request_fund": null,
+        "complete_child_safeguarding_risk": false,
+        "government_requested_assistance": false,
+        "government_requested_assistance_date": null,
+        "is_there_major_coordination_mechanism": true,
+        "entity_affected": null,
+        "community_involved": null,
+        "women": 1338,
+        "men": 1140,
+        "girls": 930,
+        "boys": 792,
+        "total_targeted_population": 4200,
+        "disability_people_per": null,
+        "people_per_urban": 0.02,
+        "people_per_local": 99.98,
+        "people_targeted_with_early_actions": null,
+        "displaced_people": 125,
+        "did_national_society": true,
+        "ns_request_date": "2024-04-27",
+        "submission_to_geneva": "2024-05-03",
+        "date_of_approval": "2024-05-04",
+        "end_date": "2024-09-30",
+        "publishing_date": "2024-05-06",
+        "operation_timeframe": 4,
+        "operation_timeframe_imminent": null,
+        "appeal_code": "MDRKG019",
+        "glide_code": "FL-2024-000053-KGZ",
+        "ifrc_appeal_manager_name": "Seval Guzelkilinc",
+        "ifrc_appeal_manager_email": "seval.guzelkilinc@ifrc.org",
+        "ifrc_appeal_manager_title": "Head of Country Cluster Delegation for Central Asia",
+        "ifrc_appeal_manager_phone_number": null,
+        "ifrc_project_manager_name": "Nurlan Jumaliev",
+        "ifrc_project_manager_email": "nurlan.jumaliev@ifrc.org",
+        "ifrc_project_manager_title": "Programme Specialist",
+        "ifrc_project_manager_phone_number": "+996 770 530 095",
+        "national_society_contact_name": "Guldar Kasymova",
+        "national_society_contact_email": "g.kasymova@redcrescent.kg",
+        "national_society_contact_title": "Head of Disaster Management",
+        "national_society_contact_phone_number": "+996 556 759 378",
+        "national_society_integrity_contact_name": null,
+        "national_society_integrity_contact_email": null,
+        "national_society_integrity_contact_title": null,
+        "national_society_integrity_contact_phone_number": null,
+        "national_society_hotline_phone_number": null,
+        "media_contact_name": "Aidai Satybaldieva",
+        "media_contact_email": "a.satybaldieva@redcrescent.kg",
+        "media_contact_title": "PR manager",
+        "media_contact_phone_number": "+996 550 224 425",
+        "ifrc_emergency_name": "Nurlan Jumaliev",
+        "ifrc_emergency_email": "nurlan.jumaliev@ifrc.org",
+        "ifrc_emergency_title": "Programme Specialist",
+        "ifrc_emergency_phone_number": "+996 770 530 095",
+        "originator_name": null,
+        "originator_email": null,
+        "originator_title": null,
+        "originator_phone_number": null,
+        "regional_focal_point_name": "Agnes Rajacic",
+        "regional_focal_point_email": "agnes.rajacic@ifrc.org",
+        "regional_focal_point_title": "Senior DREF Officer",
+        "regional_focal_point_phone_number": null,
+        "is_surge_personnel_deployed": false,
+        "safety_concerns": null,
+        "budget_file_preview": "https://prddsgofilestorage.blob.core.windows.net/api/dref/images/preview_dref_Sz2O3QA.png",
+        "is_published": true,
+        "is_final_report_created": false,
+        "has_child_safeguarding_risk_analysis_assessment": false,
+        "has_anti_fraud_corruption_policy": null,
+        "has_sexual_abuse_policy": null,
+        "has_child_protection_policy": null,
+        "has_whistleblower_protection_policy": null,
+        "has_anti_sexual_harassment_policy": null,
+        "is_man_made_event": false,
+        "is_active": true,
+        "sub_total_cost": null,
+        "surge_deployment_cost": null,
+        "indirect_cost": null,
+        "total_cost": null,
+        "hazard_date": null,
+        "hazard_vulnerabilities_and_risks": null,
+        "addressed_humanitarian_impacts": null,
+        "translation_module_original_language": "en",
+        "translation_module_skip_auto_translation": false,
+        "created_by": 7067,
+        "modified_by": 7617,
+        "field_report": 17003,
+"national_society": 98,
+        "disaster_type": 12,
+        "disaster_category_analysis": null,
+        "targeting_strategy_support_file": null,
+        "budget_file": 6045,
+        "assessment_report": null,
+        "supporting_document": null,
+        "country": 98,
+        "scenario_analysis_supporting_document": null,
+        "contingency_plans_supporting_document": null,
+        "district": [
+            1471,
+            1474,
+            1475,
+            1476,
+            1478,
+            1477
+        ],
+        "icrc": "The International Committee of the Red Cross (ICRC) is present in the country. Situational reports are shared.",
+        "selection_criteria": "The selection criteria for the targeted population is explained below: \n\n- Internally Displaced People: Three areas have experienced internal displacement due to natural disasters. Targeting IDPs ensures that those who have been forced to flee their homes receive necessary assistance, including cash assistance and psychological first aid support.\n\n- Older people and people with disabilities: Groups in vulnerable situations, such as older people, people with disabilities, and people with chronic conditions may have limited mobility and resources to access essential services. Providing support to them via cash assistance ensures that their unique needs, such as access to healthcare, mobility aids, and caregiver support, are addressed.\n\n- Children and women, multi-children, single-headed families: As women and children often face specific vulnerabilities and needs, including increased requirements for education and healthcare, supporting them via response activities ensure their protection and empowerment.\n\nAdditionally, affected families who have lost livestock or crops due to the floods will be assessed by the Ministry of Emergency Situations to evaluate the extent of the damage. Subsequently, these families will undergo further verification from RCSK to receive cash assistance via the DREF, as, during an emergency, affected households may deplete their savings on recovery efforts, leading to difficulties in accessing health and education services.",
+        "ifrc": "The International Federation of Red Cross and Red Crescent Societies (IFRC) is present in the country through its Country Cluster Delegation (CCD) in Central Asia and is part of the in-country Movement coordination team. The CCD has been supporting the RCSK in finalization of the current DREF application.",
+        "event_text": null,
+        "risk_security_concern": "The safety of RCSK staff and volunteers is important. The responsible staff will brief the teams before the visit. Measles and whooping cough is another concern. RCSK staff and volunteers will observe protective measures (masks, disinfectants, etc.) and physical distance when providing direct assistance to people. Personal protective equipment will be used by both those assisting and those affected where necessary. Damaged roads, access to the affected area and possible emergency situations will be closely monitored and consulted with relevant state partners.",
+        "national_authorities": "The following actions have been conducted by national authorities at the time of the DREF application:\n\nIn Osh province, a state of emergency was declared. The Ministry of Emergency Situations is using the following specialized equipment to support the response:\n\u2022\t2 loaders\n\u2022\t4 dump trucks\n\u2022\t10 excavators\n\u2022\t4 forklift Truck\n\u2022\t2 motor grader\nFurthermore, 107 people from the Ministry of Emergency Situations are deployed to the place of emergency for response.\n\nIn Talas province, a state of emergency was declared in the province. The Ministry of Emergency Situations is using the following specialized equipment to support the response:\n\u2022\t8 loaders\n\u2022\t6 dump trucks\n\u2022\t10 excavators\n\u2022\t3 forklift truck\n\u2022\t6 motorgrader\n\u2022\t14 motor pumps\n\u2022\t3 tractors\nFurthermore, 113 people from the Ministry of Emergency Situations were deployed for response activities.\n\nIn Jalal-Abad province, a state of emergency was declared. The Ministry of Emergency Situations is using the following specialized equipment to support the response:\n\u2022\t9 loaders\n\u2022\t14 dump trucks\n\u2022\t11 excavators\n\u2022\t4 forklift truck\n\u2022\t9 motorgrader\n\u2022\t18 motor pumps\n\u2022\t6 tractors\n\u2022\t16 cars\nFurthermore, 1,247 staff from the Ministry of Emergency Situations and local people are deployed to the response.",
+        "communication": "The RCSK has experienced communications specialists at headquarters in Bishkek, who has been sharing information on the crisis, its impact and actions undertaken and planned through various media outlets, including social media. The RCSK will continue to update the population and stakeholders on the operation progress.",
+        "anticipatory_actions": null,
+        "surge_personnel_deployed": null,
+        "ns_request_text": null,
+        "partner_national_society": "The Italian Red Cross, the Swiss Red Cross, the German Red Cross, and the Turkish Red Crescent are present in the country. Coordination is ongoing on a regular basis and partners receive all relevant information in a timely manner. The Swiss Red Cross has provided support to the RCSK with the amount of KGS 100,000 to cover fuel expenses for response.",
+        "event_scope": "Due to heavy rains, five provinces of Kyrgyzstan, namely Osh, Jalal-Abad, Naryn, Batken, and Talas were affected by severe floods with affecting a total of 103,901 people and resulting in one casualty. Out of the five provinces affected, the Ministry of Emergency Situations has declared a state of emergency in three of them: Osh, Jalal-Abad, and Talas. \n\nThe affected population includes women, older people, people with disabilities, as well as children. Considering the location of the affected area, mainly rural, these households are particularly vulnerable to the effects of floods, given limited sources of income, savings and lack of access to immediate assistance. In addition, families whose houses were severely damaged or flooded are currently staying with relatives, fellow villagers or in tents and yurts next to their houses. Some families have started to return home to assess the damage and carry out cleaning works. However, the upcoming rainfall keeps people in a delicate situation. Affected people have lost their basic household items and are in need of kitchen sets, mattresses, and hygiene items. As people living in rural areas mostly make a living by agriculture and farming, field corps and cattle impacted by the floods will present a severe burden for them. For families with three or more children, older people, and people with disabilities, it is essential to ensure access to healthcare services, which might be challenged due to damaged roads and worsened economical situation in the families.\n\nWhen comparing precipitation in April 2024 with previous years, a significant increase can be identified. In 2024, in a span of eight days (from 16 to 24 April), many regions of Kyrgyzstan received more precipitation than during the entire month of April in previous years.\nThe average difference in precipitation between 2024 and previous years was as listed below:\n- Batken oblast: 38 mm (26 per cent)\n- Osh oblast (Osh): 24.8 mm (34 per cent)\n- Kara-Suuyskiy: 23.6 mm (32 per cent)\n- Nookatsky: 44 mm (48 per cent)\n- Uzgen: 58.8 mm (49 per cent)\n- Alai: 16 mm (22 per cent)\n- Jalal-Abad (Suzak): 67 mm (50 per cent)\n- Jalal-Abad (Toktogul): 29 mm (50 per cent)\n- Naryn: 18 mm (49 per cent)\n- Zhumgalsky: 22 mm (61 per cent)\n- Talas: 30 mm (64 per cent)\n\nAt the time of the Disaster Response Emergency Fund (DREF) application, the Government has not announced any support for the affected population, other than efforts to clean up roads and other infrastructure.\n\nIt is also important to highlight that Kyrgyzstan has been responding to a measles situation. As of 15 April 2024, according to the Republican Center of Immunoprophylaxis more than 8,000 cases of measles have been registered since the beginning of the year, leading to two fatalities. The main reason for the increase in cases remains the significant number of refusals for routine measles and rubella immunization.",
+        "identified_gaps": "Currently, information regarding affected population who have experienced loss of livestock, such as cattle and field corps, is missing as this kind of assessment usually takes longer to conduct. \nNo information is available regarding assistance to be provided from the state and partners.",
+        "human_resource": "Operations Manager (100%):\n- Coordinating of overall activities and specialists responding to a disaster.\n- Planning and organization of response activities including field trips, safety measure, coordination of activities with heads of branches. \n- Coordination of overall activities at the state level. Works exclusively with government agencies (Ministry of Emergency Situations, Ministry of Social Care, etc.) to coordinate assistance. As this DREF operation is covering four provinces and requires close cooperation with all partners, including travels to the affected areas and this allocated time will be covered by DREF. \n\nField officer in the branches (100% - Osh and Jalal-Abad branches, 50% - Talas and Batken branches):\n- Implementation of response activities on the spot; assessment, compilation list of people assisted, coordination with local partners. Implement relief and support activities for affected people in accordance with approved plans. The employee's busyness is determined according to the volume of the affected population and work with them.\n\nFinance specialists in HQ (100%):\n- Organise and monitor the disaster management budget both at headquarters and in the field.\n- Cost accounting and reporting, ensuring financial transparency and compliance with all financial and logistical procedures.\n- Preparation and submission of financial report after project completion. \nIn addition, an accountant will be fully engaged in the financial reporting of DREF operation, including fund request, transfer and follow up with branches. So for the period of DREF the time reporting of the specialist cannot be combined with other projects in order to fulfill qualified reports. \n\nCash and Voucher Assistance Specialist (50%):\n- Collecting recipient data, analysing and processing information.\n- Liaising with partner bank on cash distribution, ensuring compliance with all cash and voucher standards.\n\nSpecialist in community engagement and accountability, protection, gender and inclusion (50%):\n- Ensuring staff supervision and engagement with people assisted are in line with protection, gender and inclusion principles.\n- Organising activities to engage communities in response activities and ensuring their participation in decision making.\n\nHealth specialist (50%):\n- Organising and conducting trainings of First aid, information sessions about health components and briefings at disaster sites for affected population.\n\nPsychosocial support specialist (25%):\n- Organising and conducting trainings, information sessions and briefings at disaster sites for affected population.\n- Psychological briefings for NDRT to cope with stress and trauma.",
+        "title_prefix": null,
+        "title": "Kyrgyzstan Flood 2024",
+        "people_assisted": "In total, 4,200 people (840 families) have been identified as the most affected by the floods. Those affected include Internally Displaced People (IDPs), older people, people with disabilities, children and women, families with three or more children, as well as single headed families. The list of families is compiled by the Ministry of Emergency Situations together with local authorities. RCSK will conduct further verification of affected families.",
+        "un_or_other_actor": "The RCSK distributed hygiene kits that were handed over by the United Nations International Children's Emergency Fund (UNICEF) in the frame of the United States Agency for International Development (USAID) supported project.",
+        "response_strategy": "The rationale for the overall strategy is to provide comprehensive and inclusive support to those who were directly affected by the floods.\nGuided by its auxiliary role and humanitarian principles, the RCSK and partners will support the most affected by disaster to cover their basic needs considering their dignity. \n\nThe main focus of the RCSK\u2019s response under this DREF is to provide multi-purpose cash assistance. Cash assistance under the current DREF operation will enable people to repair their houses as well as meet their basic needs. The majority of households living at or below the poverty line are located in rural areas of the country. This includes households in the affected villages. In addition, given the varying degrees of damage and loss of essential assets, the provision of cash assistance to affected households will address a wider range of needs, allowing affected households to allocate cash support according to their individual immediate needs, thereby ensuring a more dignified response. Close coordination with all partners including state ones are going on regularly which will allow to avoid duplication.\n\nAll other interventions (CEA/PGI, health, community-based health, psychosocial support, first aid, hygiene promotion) will be duly included as cross-cutting components through all planned interventions. The RCSK has full support from the state partners and receiving letter of request for response activities.\n\nSince the first days, RCSK has been helping the affected people through the distribution of household items. As of 30 April, the following items have been distributed:\n\n- 390 hygiene kits;\n- 195 kitchen sets;\n- 73 mattresses;\n- 160 blankets;\n- 21 buckets;\n- 42 canisters.\n\nThe distributed household items will be replenished through the DREF.",
+        "logistic_capacity_of_ns": "Realizing the importance of FSPs, RCSK conducted a tender to select a financial services provider. The selection of a financial services provider took place on 29 September 2023 and, as a result, a FSP was identified in line with IFRC procedures. As a result, cash distribution can be launched immediately after the verification of people assisted. The replenishment is planned as the RCSK is running out of its stock. Items distributed will be purchased locally by the RCSK.",
+        "operation_objective": "The overall objective of the DREF operation is designed to meet the immediate basic needs of a minimum of 840 households (4,200 people) directly affected by the floods through multi-purpose cash grants in the most affected areas of Kyrgyzstan. Response activities will be also aligned with essential services, such as WASH, Health, PGI, PSS, and CEA. \n\nDue to the ongoing measles situation in Kyrgyzstan, information and awareness sessions on immunisation against measles and rubella will also be conducted to the affected population. Sessions conducted by RCSK trainers on basic First Aid skills will also ensure that communities have the immediate capacity to respond to potential injuries during cleaning and reconstruction works until medical services arrive.",
+        "pmer": "Monitoring and evaluation will be an integral part of the operation. The RCSK has a strong capacity and equipped with tools. Affected branches will regularly share updates on the operation. \n\nThe Operations Manager will inform IFRC on a monthly basis in the form of narrative reports on the key achievements of the operation and planned activities. \n\nReports will reflect the number of people assisted with disaggregated data on gender, age and disability. In addition, a satisfaction survey on the services provided through the DREF operation will be conducted in accordance with IFRC standards.\n\nAt the end of the operation, the RCSK will conduct a lessons learned workshop with the participation of representatives from all branches, HQ, and IFRC to assess the main achievements and challenges in order to improve the National Society response operations in the future. \n\nAt the end of the cash distribution, a PDM will be conducted by compiling different approaches, including household visits, phone calls and group discussions. Feedback mechanisms preferred by the community will be active in all phases of the operation.",
+        "major_coordination_mechanism": "The country has a Disaster Response Coordination Unit, led by the national government and supported by the United Nations. International agencies and the RCSK are the members of the Coordination Unit. The DRCU has five key sectors: food security and logistics, shelter and essential household items, water, hygiene and sanitation, protection, and health:. At this stage, the government did not request activation of the DRCU mechanism, however, the MoES, in the frame of Civil Defense system, has regular coordination meetings to respond to the needs of impacted villages. RCSK is in regular contact with DRCU Secretariat.",
+        "event_description": "Due to heavy rains on 21 - 22 April 2024 in Kyrgyzstan, Osh, Jalal-Abad, Talas, Batken, and Naryn provinces were affected by floods. In total, six villages in Jalal-Abad province, 23 villages in Osh province and city of Osh, seven villages  in Talas province, one village in Naryn province, and Razakov city in Batken province were impacted. The average April precipitation in the affected areas is from 46 to 72 mm. However, due to climate change, the amount of precipitation in this part of the country has increased in recent years. The table below summarizes the monthly rainfall and the amount of rainfall on the days indicated by the Hydrometeorological centre.\n\n\nProvince\t                                        Osh\t         Jalal-Abad\t    Talas          Naryn        Batken (Razakov city)\nPrecipitation rate for April month   46 mm\t    72 mm         56 mm        35 mm               83 mm\nPrecipitation on April 21-22\t        34 mm\t    41 mm          25 mm         17 mm               64 mm\n\nAlso, on 22 April, for a timeframe of four hours the overall amount of precipitation was 20.2 mm, which is 35 per cent of the monthly norm. In Osh , the amount was 15.7 mm in six hours (34 per cent of the monthly norm), in Jalal-Abad, 31.6 mm in six hours (43 per cent of the monthly norm), in Razakov city (Batken province) 64.8 mm in an hour (77.2 per cent of the monthly norm), and in Naryn province 17 mm (48.57 per cent of the monthly norm). \n\nDue to the sudden and increased rainfall and location in mountainous areas, increased volumes of water flowed down the hill towards the affected settlements, which caused mudslides and overflowing of which brought to the floods in populated villages. The disaster destroyed and blocked main roads leading to and from the villages, damaged residential and non-residential buildings, and caused electricity cuts as a result of destroyed polling stations and power lines. The floods have also resulted in drinking water cuts in cities, affecting the water distribution fence. As some cemeteries and animal burials are under the risk of floods, the likelihood of disease outbreaks increased. \n\nAccording to the Hydrometeorological Service under the Ministry of Emergency Situations (MoES), in the period from 26 to 28 April 2024, forecasted unstable weather and expected local torrential rains, as well as possible floods in the mountainous and foothill areas of the country, the rivers are expected to rise in water levels. On 22 April, state of emergency was declared in three provinces: Osh, Jalal-Abad, and Talas.",
+        "dref_recurrent_text": null,
+        "lessons_learned": "One of the conclusions drawn from the previous responses was the necessity to establish a clear action plan for the affected communities and to streamline certain activities where appropriate, in order to minimize disruption to the affected population and to avoid creating additional burdens, considering that most families are currently occupied with rebuilding their houses after the floods. Additionally, given that many individuals will likely be experiencing stress in the aftermath of the floods, RCSK will be organizing psychosocial support (PSS) sessions for the affected communities starting from the initial days. Therefore, it is imperative to develop an action plan collaboratively with all relevant coordinators and representatives from the target communities. Based on past experience, it is advisable to engage specialized volunteers to conduct information sessions aimed at better informing the population about routine immunization against measles and rubella. Additionally, establishing communication channels with local immunization authorities is crucial for coordinating these activities effectively.\n\nFurthermore, it was emphasized that planning and budgeting should include provisions for designated specialists such as Community Engagement and Accountability (CEA), PSS professionals, and others, to ensure a higher quality of work and support for the affected populations.",
+        "child_safeguarding_risk_level": null,
+        "is_volunteer_team_diverse": null
+    }
+]
