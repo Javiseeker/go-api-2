@@ -1,0 +1,43 @@
+{
+  "operational_summary": "summary of the operation",
+  "sectors": [
+    {
+      "title": "",
+      "actions_taken_summary": "description",
+      "needs_summary": "description",
+      "future_actions": [
+        {
+          "indicators": [
+            {
+              "title": "",
+              "people_targeted": 0
+            },
+            {
+              "title": "",
+              "people_targeted": 0
+            },
+            {
+              "title": "",
+              "people_targeted": 0
+            }
+          ],
+          "budget": 0,
+          "description": "",
+          "people_targeted_total": 0
+        }
+      ]
+    }
+  ],
+
+  "dref_type": "",
+  "dref_onset": "",
+  "metadata": {
+    "dref_id": 123,
+    "dref_title": "Kyrgyzstan Flood 2024",
+    "dref_date": "2024-01-01",
+    "dref_created_at": "2024-01-01T12:00:00Z",
+    "dref_budget_file_created_by": "https://example.com/budget.pdf",
+    "dref_op_update_number": 0,
+    "operational_update_details": "Details"
+  }
+}

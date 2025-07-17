@@ -362,14 +362,8 @@ class PerDrefStatusView(APIView):
             print(f"Unexpected error in PerDrefStatusView: {str(e)}")
             return Response({"error": f"Internal server error: {str(e)}"}, status=drf_status.HTTP_500_INTERNAL_SERVER_ERROR)
         
-# Objective 2
-    # Object return two summaries, operational stratgies and overall objectives + all budgeting in DREF
-    # which can be shown in the frontend
-    # Two DREF summaries are returned
-    # Summary 1 - Data for two properties:
-    #   1. Overall objective of the operation 
-    #   2. Operation strategy rationale
-    # Summary 2 - Budgeting for DREF
+
+
 
 class PerDrefLLMSummaryView(APIView):
     """
@@ -527,32 +521,49 @@ class PerDrefLLMSummaryView(APIView):
             print(f"   ✅ Successfully imported DrefSummaryTask")
             
             print(f"\n🎯 Step 9: Generating DREF summaries using Azure OpenAI")
+            print(f"   Calling DrefSummaryTask.generate_dref_summaries with dref_dict keys: {list(dref_dict.keys())}")
             summaries = DrefSummaryTask.generate_dref_summaries(dref_dict)
             
-            print(f"   Summary generation result:")
+            print(f"   🔍 Summary generation result:")
             print(f"      - Status: {summaries.get('status', 'unknown')}")
             print(f"      - Operational summary: {'✅' if summaries.get('operational_summary') else '❌'}")
+            print(f"      - Sectors: {'✅' if summaries.get('sectors') else '❌'} ({len(summaries.get('sectors', []))} sectors)")
             print(f"      - Budget summary: {'✅' if summaries.get('budget_summary') else '❌'}")
             print(f"      - Errors: {summaries.get('errors', [])}")
+            print(f"      - Full summaries object: {summaries}")
             
             # Step 8: Format response data
-            print(f"\n Step 10: Formatting response data")
+            print(f"\n📋 Step 10: Formatting response data")
+            
+            # Extract sectors data with debugging
+            sectors_data = summaries.get("sectors", [])
+            print(f"   🔍 Sectors data extracted: {len(sectors_data)} sectors")
+            for i, sector in enumerate(sectors_data):
+                print(f"      Sector {i+1}: {sector.get('title', 'No title')} - needs: {bool(sector.get('needs_summary'))}, actions: {bool(sector.get('actions_taken_summary'))}, future: {len(sector.get('future_actions', []))}")
+            
             summary_data = {
                 "operational_summary": summaries.get("operational_summary", ""),
-                "budget_summary": summaries.get("budget_summary", {})
+                "sectors": sectors_data,
+                "dref_type": dref_data.type_of_dref_display if hasattr(dref_data, 'type_of_dref_display') else "",
+                "dref_onset": dref_data.type_of_onset_display if hasattr(dref_data, 'type_of_onset_display') else "",
+                "metadata": {
+                    "dref_id": dref_data.id,
+                    "dref_title": dref_data.title,
+                    "dref_date": dref_data.event_date,
+                    "dref_created_at": dref_data.created_at if hasattr(dref_data, 'created_at') else None,
+                    "dref_budget_file_created_by": dref_data.budget_file_preview if hasattr(dref_data, 'budget_file_preview') else "",
+                    "dref_op_update_number": len(dref_data.operational_update_details) if hasattr(dref_data, 'operational_update_details') and dref_data.operational_update_details else 0,
+                    "operational_update_details": f"Event: {event.get('name')}, Source: {dref_source_used}, Reports: {len(field_reports)}"
+                }
             }
             
-            # Add metadata for debugging/info
-            summary_data["metadata"] = {
-                "dref_id": dref_data.id,
-                "dref_title": dref_data.title,
-                "dref_source": dref_source_used,
-                "event_id": event_id,
-                "event_name": event.get("name"),
-                "field_reports_count": len(field_reports),
-                "status": summaries.get("status"),
-                "errors": summaries.get("errors", [])
-            }
+            print(f"   🔍 Final summary_data structure:")
+            print(f"      - operational_summary: {'✅' if summary_data['operational_summary'] else '❌'}")
+            print(f"      - sectors: {'✅' if summary_data['sectors'] else '❌'} ({len(summary_data['sectors'])} sectors)")
+            print(f"      - dref_type: {summary_data['dref_type']}")
+            print(f"      - dref_onset: {summary_data['dref_onset']}")
+            print(f"      - metadata: {summary_data['metadata']}")
+            print(f"   🔍 summary_data['sectors'] content: {summary_data['sectors']}")
                         
             print(f"\n📋 Step 11: Creating serializer")
             serializer = PerDrefLLMSummarySerializer(summary_data)

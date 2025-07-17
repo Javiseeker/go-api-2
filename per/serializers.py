@@ -1296,14 +1296,51 @@ class OpsLearningStatSerializer(serializers.Serializer):
     sources_overtime = LearningSourcesOvertimeSerializer(many=True)
 
 
+class PerDrefLLMSummaryIndicatorSerializer(serializers.Serializer):
+    """Serializer for indicators within planned interventions"""
+    title = serializers.CharField(required=False, allow_blank=True)
+    people_targeted = serializers.IntegerField(required=False, allow_null=True)
+
+
+class PerDrefLLMSummaryFutureActionSerializer(serializers.Serializer):
+    """Serializer for future actions within sectors"""
+    indicators = PerDrefLLMSummaryIndicatorSerializer(many=True, required=False)
+    budget = serializers.IntegerField(required=False, allow_null=True)
+    description = serializers.CharField(required=False, allow_blank=True)
+    people_targeted_total = serializers.IntegerField(required=False, allow_null=True)
+
+
+class PerDrefLLMSummarySectorSerializer(serializers.Serializer):
+    """Serializer for sector-based summaries"""
+    title = serializers.CharField(required=False, allow_blank=True)
+    actions_taken_summary = serializers.CharField(required=False, allow_blank=True)
+    needs_summary = serializers.CharField(required=False, allow_blank=True)
+    future_actions = PerDrefLLMSummaryFutureActionSerializer(many=True, required=False)
+
+
+class PerDrefLLMSummaryMetadataSerializer(serializers.Serializer):
+    """Serializer for DREF metadata"""
+    dref_id = serializers.IntegerField(required=False, allow_null=True)
+    dref_title = serializers.CharField(required=False, allow_blank=True)
+    dref_date = serializers.DateField(required=False, allow_null=True)
+    dref_created_at = serializers.DateTimeField(required=False, allow_null=True)
+    dref_budget_file_created_by = serializers.CharField(required=False, allow_blank=True)
+    dref_op_update_number = serializers.IntegerField(required=False, allow_null=True)
+    operational_update_details = serializers.CharField(required=False, allow_blank=True)
+
+
 class PerDrefLLMSummarySerializer(serializers.Serializer):
     """
-    DTO for PerDrefLLMSummaryView response containing brief and long summaries.
+    DTO for PerDrefLLMSummaryView response matching sector_object.json structure.
     
-    operational_summary: Short 3-line operational objectives and strategy summary
-    budget_summary: Comprehensive budget and financial analysis (JSON object)
-    metadata: Additional information about the DREF and processing status
+    operational_summary: Short operational objectives and strategy summary
+    sectors: List of sector-based summaries with needs, actions, and future plans
+    dref_type: Type of DREF operation
+    dref_onset: Type of disaster onset
+    metadata: Additional information about the DREF
     """
-    operational_summary = serializers.CharField(allow_blank=True, required=False)
-    budget_summary = serializers.JSONField(required=False)
-    metadata = serializers.JSONField(required=False)
+    operational_summary = serializers.CharField(required=False, allow_blank=True)
+    sectors = PerDrefLLMSummarySectorSerializer(many=True, required=False)
+    dref_type = serializers.CharField(required=False, allow_blank=True)
+    dref_onset = serializers.CharField(required=False, allow_blank=True)
+    metadata = PerDrefLLMSummaryMetadataSerializer(required=False)
