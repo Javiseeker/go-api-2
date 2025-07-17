@@ -1336,36 +1336,56 @@ class IFRCEventListView(views.APIView):
         self.azure_client = AzureServiceClient()
     
     def get(self, request) -> Response:
-        """Handle GET requests for IFRC event data."""
-        # Validate request parameters
+        """Handle GET requests for IFRC event data, with fallback logic."""
         validation_response = self._validate_request_params(request)
         if validation_response:
             return validation_response
         
         country_id = int(request.query_params.get('country'))
         disaster_type_id = int(request.query_params.get('disaster_type'))
-        
-        # Fetch data from external APIs
+
+        fallback_used = False  # Track if we fall back to country-only filtering
+
+        # --- Try to fetch events with country + dtype ---
         events_result = self._fetch_events(country_id, disaster_type_id)
+
+        # If error, return early
         if self._is_error_response(events_result):
             return self._create_error_response(events_result)
-        
+
+        # If empty, retry with country-only
+        if not events_result.get('results'):
+            fallback_used = True
+            print("=== DEBUG: No events found for country + disaster_type. Falling back to country-only ===")
+            events_result = self._fetch_events(country_id, None)  # disaster_type_id = None
+            
+            if self._is_error_response(events_result):
+                return self._create_error_response(events_result)
+
+        # Fetch ops learning (still filtered by country + dtype)
         ops_learning_result = self._fetch_ops_learning(country_id, disaster_type_id)
         if self._is_error_response(ops_learning_result):
             return self._create_error_response(ops_learning_result)
-        
-        # Process and structure the data
+
         structured_data = self._join_events_and_learning(
             events_result.get('results', []),
             ops_learning_result.get('results', [])
         )
-        
-        # Generate AI summary if Azure client is available
+
         ai_summary = self._generate_ai_summary(structured_data)
-        
-        return Response({
-            'ai_structured_summary': ai_summary
-        }, status=drf_status.HTTP_200_OK)
+
+        response_data = {
+            'ai_structured_summary': ai_summary,
+            'fallback_used': fallback_used,
+        }
+
+        if fallback_used:
+            response_data['message'] = (
+                'No events found for the selected disaster type. Showing events based on country only.'
+            )
+
+        return Response(response_data, status=drf_status.HTTP_200_OK)
+
     
     def _validate_request_params(self, request) -> Optional[Response]:
         """Validate required query parameters."""
@@ -1404,7 +1424,9 @@ class IFRCEventListView(views.APIView):
         """Fetch events from IFRC API."""
         api_url = 'https://goadmin.ifrc.org/api/v2/event/'
         # Try different parameter names for country filtering
-        params = {'countries__in': country_id, 'dtype': disaster_type_id, 'limit': 5}
+        params = {'countries__in': country_id, 'limit': 5}
+        if disaster_type_id is not None:
+            params['dtype'] = disaster_type_id
         
         return self._make_api_request(api_url, params, 'events')
     
