@@ -121,7 +121,9 @@ from .serializers import (
     PublicPerProcessSerializer,
     UserPerCountrySerializer,
 )
-
+import json
+from per.ops_learning_summary2 import OpsLearningSummaryTask
+from per.ops_learning_summary2 import AzureOpenAiChat
 class PERDocsFilter(filters.FilterSet):
     id = filters.NumberFilter(field_name="id", lookup_expr="exact")
 
@@ -1330,63 +1332,51 @@ class PerDocumentUploadViewSet(viewsets.ModelViewSet):
 
 class IFRCEventListView(views.APIView):
     """API view for fetching and enriching IFRC event data with operational learning insights."""
-    
+    DISASTER_TYPE_EVENT_THRESHOLD = 3
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.azure_client = AzureServiceClient()
-    
+
     def get(self, request) -> Response:
-        """Handle GET requests for IFRC event data, with fallback logic."""
+        """Handle GET requests for IFRC event data with fallback logic and a single AI summary field."""
+        # validate
         validation_response = self._validate_request_params(request)
         if validation_response:
             return validation_response
-        
-        country_id = int(request.query_params.get('country'))
-        disaster_type_id = int(request.query_params.get('disaster_type'))
 
-        fallback_used = False  # Track if we fall back to country-only filtering
+        country_id = int(request.query_params['country'])
+        disaster_type_id = int(request.query_params['disaster_type'])
 
-        # --- Try to fetch events with country + dtype ---
-        events_result = self._fetch_events(country_id, disaster_type_id)
+        # 1) fetch events by dtype+country, fallback to country-only if under threshold
+        disaster_events = self._fetch_events(country_id, disaster_type_id).get('results', [])
+        fallback_note = None
+        if len(disaster_events) < self.DISASTER_TYPE_EVENT_THRESHOLD:
+            country_events = self._fetch_events_by_country_only(country_id).get('results', [])
+            # merge unique
+            merged = {e['id']: e for e in disaster_events}
+            for e in country_events:
+                merged.setdefault(e['id'], e)
+            all_events = list(merged.values())
+            fallback_note = f"Only {len(disaster_events)} disaster-type events found; added country-level results."
+        else:
+            all_events = disaster_events
 
-        # If error, return early
-        if self._is_error_response(events_result):
-            return self._create_error_response(events_result)
+        # 2) fetch ops learning
+        ops_learning = self._fetch_ops_learning(country_id, disaster_type_id).get('results', [])
 
-        # If empty, retry with country-only
-        if not events_result.get('results'):
-            fallback_used = True
-            print("=== DEBUG: No events found for country + disaster_type. Falling back to country-only ===")
-            events_result = self._fetch_events(country_id, None)  # disaster_type_id = None
-            
-            if self._is_error_response(events_result):
-                return self._create_error_response(events_result)
+        # 3) join + generate
+        structured = self._join_events_and_learning(all_events, ops_learning)
+        ai_summary = self._generate_ai_summary(structured)
 
-        # Fetch ops learning (still filtered by country + dtype)
-        ops_learning_result = self._fetch_ops_learning(country_id, disaster_type_id)
-        if self._is_error_response(ops_learning_result):
-            return self._create_error_response(ops_learning_result)
-
-        structured_data = self._join_events_and_learning(
-            events_result.get('results', []),
-            ops_learning_result.get('results', [])
-        )
-
-        ai_summary = self._generate_ai_summary(structured_data)
-
-        response_data = {
-            'ai_structured_summary': ai_summary,
-            'fallback_used': fallback_used,
+        # 4) return single field
+        response_payload = {
+            'ai_structured_summary': ai_summary
         }
+        if fallback_note:
+            response_payload['fallback_note'] = fallback_note
 
-        if fallback_used:
-            response_data['message'] = (
-                'No events found for the selected disaster type. Showing events based on country only.'
-            )
+        return Response(response_payload, status=drf_status.HTTP_200_OK)
 
-        return Response(response_data, status=drf_status.HTTP_200_OK)
-
-    
     def _validate_request_params(self, request) -> Optional[Response]:
         """Validate required query parameters."""
         country = request.query_params.get('country')
@@ -1450,6 +1440,14 @@ class IFRCEventListView(views.APIView):
         print(f"=== DEBUG: Filtered ops learning count: {len(filtered)} ===")
 
         return {'results': filtered}
+
+    def _fetch_events_by_country_only(self, country_id: int) -> Dict[str, Any]:
+        """Fetch events by country only, without disaster type filtering."""
+        api_url = 'https://goadmin.ifrc.org/api/v2/event/'
+        params = {'countries__in': country_id, 'limit': 10}  
+
+
+        return self._make_api_request(api_url, params, 'fallback events')
     
     def _make_api_request(self, url: str, params: Dict[str, Any], data_type: str) -> Dict[str, Any]:
         """Make HTTP request to external API with error handling."""
@@ -1642,37 +1640,69 @@ class IFRCEventListView(views.APIView):
             'related_ops_learning': orphaned_learning
         }
     
-    def _generate_ai_summary(self, structured_data: List[Dict]) -> Optional[str]:
-        """Generate AI-powered summary using Azure OpenAI."""
-        print(f"=== DEBUG: Azure client configured: {self.azure_client.openai_client is not None} ===")
-        
+    def _generate_ai_summary(self, structured_data: List[Dict]) -> List[Dict]:
         if not self.azure_client.openai_client:
-            print("=== DEBUG: Azure OpenAI not configured - skipping enrichment ===")
-            print("=== DEBUG: Environment variables needed: AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_KEY, AZURE_OPENAI_DEPLOYMENT_NAME ===")
-            return None
-        
-        print("=== DEBUG: Processing data with Azure OpenAI... ===")
-        
-        # Combine all text content
-        all_summaries = [event.get('summary', '') for event in structured_data]
-        all_descriptions = [event.get('description', '') for event in structured_data]
-        all_learnings = []
-        all_learning_texts = []
-        
-        for event in structured_data:
-            learning_entries = event.get('related_ops_learning', [])
-            all_learnings.extend(learning_entries)
-            
-            # Extract learning text content
-            for learning in learning_entries:
-                learning_text = learning.get('learning_text', '')
-                if learning_text:
-                    all_learning_texts.append(learning_text)
-        
-        combined_summary = "\n".join(all_summaries)
-        combined_description = "\n".join(all_descriptions)
-        combined_learning_text = "\n".join(all_learning_texts)
-        
-        return self.azure_client.get_structured_summary(
-            combined_summary, combined_description, all_learnings
+            return []
+
+        system_message = {
+            "role": "system",
+            "content": (
+                "You MUST return a JSON array of up to 6 objects.  "
+                "Each object **must** have exactly these three keys:\n\n"
+                "  • title   : a 3–5 word bold headline\n"
+                "  • insight : one or two full sentences summarizing the finding\n"
+                "  • sources : a JSON array of the IDs that back up this finding\n\n"
+                "**Do not** omit any field. **Do not** wrap your JSON in markdown.  "
+                "Example:\n"
+                "[\n"
+                "  {\"title\":\"Early Alerts Save Lives\",\n"
+                "   \"insight\":\"Issuing timely alerts ...\",\n"
+                "   \"sources\":[\"PAN: Flood - 2023-08\",\"PAN: Flood - 10-2024\"]\n"
+                "  },\n"
+                "  …\n"
+                "]"
+            )
+        }
+
+        events_block = "\n".join(f"- {e['summary']}: {e['description']}" for e in structured_data)
+        learnings_block = "\n".join(
+            f"- {l['id']}: {l['learning_text']}"
+            for e in structured_data
+            for l in e.get("related_ops_learning", [])
         )
+
+        user_message = {
+            "role": "user",
+            "content": (
+                "Here are the events:\n" + events_block +
+                "\n\nHere are the learnings:\n" + learnings_block +
+                "\n\nPlease synthesize up to 6 **actionable insights**, "
+                "each with **title**, **insight** and **sources** as specified above. "
+                "Return **only** the JSON array."
+            )
+        }
+
+        raw = self.azure_client.openai_client.chat.completions.create(
+            model=settings.AZURE_OPENAI_DEPLOYMENT_NAME,
+            messages=[system_message, user_message],
+            temperature=0.7
+        ).choices[0].message.content
+
+        try:
+            data = json.loads(raw)
+            # sanity‐check that every entry has non‐empty fields
+            clean = []
+            for obj in data:
+                if obj.get("title") and obj.get("insight") and obj.get("sources"):
+                    clean.append(obj)
+            if clean:
+                return clean
+        except Exception:
+            pass
+
+        # fallback
+        return [{
+            "title":   "ParsingError",
+            "insight": raw.strip(),
+            "sources": []
+        }]

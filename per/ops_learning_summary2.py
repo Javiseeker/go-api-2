@@ -57,22 +57,14 @@ class OpsLearningSummaryTask:
     MIN_DIF_EXCERPTS = 3
 
     primary_prompt = (
-        "\n Below are learnings drawn from similar disasters and countries. "
-        "Please review the following operational learnings from past emergency responses. "
-        "Your task is to summarize UP TO THREE clear, actionable insights that help improve future operations.\n\n"
-        "### Output Format:\n"
-        "- *Title*: Short, bold summary of the finding (20–30 characters).\n"
-        "- *Excerpts ID*: The IDs of the sources used (do NOT include in summary content).\n"
-        "- *Content*: Insight supported by multiple reports, briefly mention the country or disaster it’s based on (e.g. 'based on floods in Kenya, 2022'). This helps users understand context.\n"
-        "- *Confidence Level*: Rate from 1 to 5 depending on how many sources support it (e.g. 4/5).\n"
-        "- *Contradictory Reports*: Mention if any countries reported different or opposite experiences.\n\n"
-        "**Important:**\n"
-        "- Do NOT mention excerpt IDs in the content.\n"
-        "- DO include which disaster or country the insight is based on.\n"
-        "- Do NOT use information not provided.\n\n"
-        "Reply with valid JSON only. No extra commentary.\n"
+        "\nBelow is a list of event summaries and their associated operational learnings. "
+        "Your task is to synthesize across all these data points and produce **3 to 6 clear, concise, evidence‑based highlights** "
+        "that capture the key similarities, patterns or lessons learned. For each highlight include:\n\n"
+        " 1. **Title**: A very short bold summary (20–30 characters).\n"
+        " 2. **Content**: One or two sentences explaining the highlight, referencing the type of event or country (e.g. “Based on droughts in Ethiopia, 2023”).\n"
+        " 3. **Supporting IDs**: A list of the excerpt IDs that back up the highlight (do not include IDs in the prose itself).\n\n"
+        "Please return the top 3–6 insights as plain text bullet points—no JSON, no extra markup.\n\n"
     )
-
     component_prompt = (
         "\n Please aggregate and summarize this data into structured paragraphs (as few as possible, as many as necessary). \n "
         "The output SHOULD ALWAYS follow the format below:\n"
