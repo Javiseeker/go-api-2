@@ -1325,9 +1325,8 @@ class PerDrefLLMSummaryMetadataSerializer(serializers.Serializer):
     dref_title = serializers.CharField(required=False, allow_blank=True)
     dref_date = serializers.DateField(required=False, allow_null=True)
     dref_created_at = serializers.DateTimeField(required=False, allow_null=True)
-    dref_budget_file_created_by = serializers.CharField(required=False, allow_blank=True)
+    dref_budget_file = serializers.CharField(required=False, allow_blank=True)
     dref_op_update_number = serializers.IntegerField(required=False, allow_null=True)
-    operational_update_details = serializers.CharField(required=False, allow_blank=True)
 
 
 class PerDrefLLMSummarySerializer(serializers.Serializer):

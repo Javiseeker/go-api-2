@@ -475,7 +475,7 @@ class PerDrefLLMSummaryView(APIView):
                     "dref_title": dref_data.title,
                     "dref_date": dref_data.event_date,
                     "dref_created_at": dref_data.created_at if hasattr(dref_data, 'created_at') else None,
-                    "dref_budget_file_created_by": getattr(dref_data, 'budget_file_preview', None),
+                    "dref_budget_file": getattr(dref_data, 'budget_file_preview', None),
                     "dref_op_update_number": op_update_number
                 }
             }     
