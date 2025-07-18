@@ -362,9 +362,6 @@ class PerDrefStatusView(APIView):
             print(f"Unexpected error in PerDrefStatusView: {str(e)}")
             return Response({"error": f"Internal server error: {str(e)}"}, status=drf_status.HTTP_500_INTERNAL_SERVER_ERROR)
         
-
-
-
 class PerDrefLLMSummaryView(APIView):
     """
     API view for generating DREF LLM summaries.
@@ -375,28 +372,19 @@ class PerDrefLLMSummaryView(APIView):
     """
     
     def get(self, request):
-        print("\n" + "="*80)
-        print("🚀 STARTING PerDrefLLMSummaryView.get()")
-        print("="*80)
-        
         event_id = request.query_params.get("id", None)
-        print(f"📥 Step 1: Received event_id parameter: {event_id}")
-        
+
         if not event_id:
             print("❌ Step 1 FAILED: Event ID is required")
             return Response({"error": "Event ID is required"}, status=drf_status.HTTP_400_BAD_REQUEST)
         
         try:
-            # Convert to int for validation
             event_id = int(event_id)
-            print(f"✅ Step 1: Successfully converted event_id to int: {event_id}")
         except ValueError:
             print(f"❌ Step 1 FAILED: Event ID must be a valid integer, got: {event_id}")
             return Response({"error": "Event ID must be a valid integer"}, status=drf_status.HTTP_400_BAD_REQUEST)
         
         try:
-            print(f"\n📞 Step 2: Calling EventAPIClient for event {event_id}")
-            # Step 1: Check if the event exists using EventAPIClient
             event_client = EventAPIClient()
             event = event_client.get_event_detail(event_id)
             
@@ -404,13 +392,7 @@ class PerDrefLLMSummaryView(APIView):
                 print(f"❌ Step 2 FAILED: Event {event_id} not found in API")
                 return Response({"error": "Event not found"}, status=drf_status.HTTP_404_NOT_FOUND)
             
-            print(f"✅ Step 2: Event found - Name: {event.get('name', 'N/A')}")
-            print(f"   Event keys: {list(event.keys())}")
-            
-            # Step 2: Get field reports from the event
             field_reports = event.get("field_reports", [])
-            print(f"\n📋 Step 3: Extracting field reports from event")
-            print(f"   Found {len(field_reports)} field reports")
             
             if len(field_reports) == 0:
                 print("❌ Step 3 FAILED: No field reports found for this event")
@@ -422,61 +404,22 @@ class PerDrefLLMSummaryView(APIView):
             
             logger.info(f"Found {len(field_reports)} field reports for event {event_id}")
             
-            # Step 3: Extract field report IDs from the results array
             field_report_ids = [fr['id'] for fr in field_reports]
-            print(f"✅ Step 3: Field report IDs extracted: {field_report_ids}")
-            logger.info(f"Field report IDs: {field_report_ids}")
-            
-            # Step 4: Filter DREFs using the list of field report IDs
-            print(f"\n🔍 Step 4: Creating DREF filters with field_report_ids: {field_report_ids}")
             filters = DREFFilters(field_report_ids=field_report_ids)
-            print("✅ Step 4: DREF filters created successfully")
-            
-            # Try different DREF sources in order of preference
-            dref_sources = ["basic", "op-update", "final-report"]
-            matching_drefs = []
-            dref_source_used = None
-            
-            print(f"\n🗂️ Step 5: Searching DREF sources in order: {dref_sources}")
-            
-            for i, source in enumerate(dref_sources):
-                print(f"   5.{i+1}: Trying DREF source '{source}'...")
-                try:
-                    matching_drefs = dref_manager.get_data(source, filters)
-                    print(f"      Found {len(matching_drefs)} DREF records in '{source}'")
-                    
-                    if matching_drefs:
-                        dref_source_used = source
-                        print(f"✅ Step 5.{i+1}: Success! Using DREF source '{source}' with {len(matching_drefs)} records")
-                        logger.info(f"Found {len(matching_drefs)} DREF records in {source}")
-                        break
-                    else:
-                        print(f"   5.{i+1}: No records found in '{source}', trying next...")
-                except Exception as e:
-                    print(f"❌ Step 5.{i+1}: Error accessing DREF source '{source}': {e}")
-                    logger.warning(f"Error accessing DREF source {source}: {e}")
-                    continue
-            
-            if len(matching_drefs) == 0:
-                print("❌ Step 5 FAILED: No DREF found in any source for the given field report IDs")
+            dref_data = dref_manager.get_data("basic", filters)
+
+            if len(dref_data) == 0:
+                print("❌ Step 3 FAILED: No field reports found for this event")
                 return Response({
-                    "error": "No DREF found for the given event ID",
+                    "error": "DREFs not found",
                     "event_id": event_id,
-                    "event_name": event.get("name"),
-                    "field_reports_count": len(field_reports),
-                    "field_report_ids": field_report_ids
+                    "event_name": event.get("name")
                 }, status=drf_status.HTTP_404_NOT_FOUND)
             
-            # Step 5: Use the first matching DREF for summary generation
-            dref_data = matching_drefs[0]
-            print(f"\n📊 Step 6: Processing DREF data")
-            print(f"   DREF ID: {dref_data.id}")
-            print(f"   DREF Title: {dref_data.title}")
-            print(f"   DREF Type: {type(dref_data)}")
-            logger.info(f"Using DREF ID: {dref_data.id}, Title: {dref_data.title}")
-            
-            # Step 6: Convert DREF data to dictionary for processing
-            print(f"\n🔄 Step 7: Converting DREF data to dictionary")
+            dref_data = dref_data[0]
+
+            dref_data = dref_manager.get_latest_dref_version(dref_data)
+
             dref_dict = {
                 'id': dref_data.id,
                 'title': dref_data.title,
@@ -494,53 +437,34 @@ class PerDrefLLMSummaryView(APIView):
                 },
                 'event_date': dref_data.event_date,
                 'end_date': getattr(dref_data, 'end_date', None),
-                'planned_interventions': [],
-                # Planned interventions is empty and the following fields are strings:
+                'planned_interventions': getattr(dref_data, 'planned_interventions', []),
+                'national_society_actions': getattr(dref_data, 'national_society_actions',[]),
+                'needs_identified': getattr(dref_data, 'needs_identified', []),
                 'people_in_need': getattr(dref_data, 'people_in_need', None),
                 'human_resource': getattr(dref_data, 'human_resource', None),
                 'logistic_capacity_of_ns': getattr(dref_data, 'logistic_capacity_of_ns', None),
                 'pmer': getattr(dref_data, 'pmer', None)
             }
+
             
-            # print(f"   ✅ Basic DREF dict created with {len(dref_dict)} fields")
-            # print(f"   Key fields check:")
-            # print(f"      - operation_objective: {'✅' if dref_dict['operation_objective'] else '❌'} ({len(str(dref_dict['operation_objective'])) if dref_dict['operation_objective'] else 0} chars)")
-            # print(f"      - response_strategy: {'✅' if dref_dict['response_strategy'] else '❌'} ({len(str(dref_dict['response_strategy'])) if dref_dict['response_strategy'] else 0} chars)")
-            # print(f"      - amount_requested: {'✅' if dref_dict['amount_requested'] else '❌'} ({dref_dict['amount_requested']})")
-            
-            # Add planned interventions if available
-            if hasattr(dref_data, 'planned_interventions') and dref_data.planned_interventions:
-                dref_dict['planned_interventions'] = dref_data.planned_interventions
-                print(f"   ✅ Added {len(dref_dict['planned_interventions'])} planned interventions")
-            else:
-                print(f"   ⚠️ No planned interventions available")
-            
-            # Step 7: Generate summaries using the new ops_learning_summary3
-            print(f"\n🤖 Step 8: Importing DrefSummaryTask from ops_learning_summary3")
+            op_update_number = 1  # Default value
+
+            operational_updates = getattr(dref_data, 'operational_update_details', [])
+            if operational_updates and isinstance(operational_updates, list):
+                first_update = operational_updates[0]
+                op_update_number = getattr(first_update, 'operational_update_number', 1)
+
+
             from per.ops_learning_summary3 import DrefSummaryTask
-            print(f"   ✅ Successfully imported DrefSummaryTask")
-            
-            print(f"\n🎯 Step 9: Generating DREF summaries using Azure OpenAI")
-            print(f"   Calling DrefSummaryTask.generate_dref_summaries with dref_dict keys: {list(dref_dict.keys())}")
+
+            # modify this code to NOT run the .get_latest_dref_version(dref_data), just use the dref data available.
+            # I have planned_interventions, national_society_actions and needs_identified in the dref_dict.
+
             summaries = DrefSummaryTask.generate_dref_summaries(dref_dict)
-            
-            print(f"   🔍 Summary generation result:")
-            print(f"      - Status: {summaries.get('status', 'unknown')}")
-            print(f"      - Operational summary: {'✅' if summaries.get('operational_summary') else '❌'}")
-            print(f"      - Sectors: {'✅' if summaries.get('sectors') else '❌'} ({len(summaries.get('sectors', []))} sectors)")
-            print(f"      - Budget summary: {'✅' if summaries.get('budget_summary') else '❌'}")
-            print(f"      - Errors: {summaries.get('errors', [])}")
-            print(f"      - Full summaries object: {summaries}")
-            
-            # Step 8: Format response data
-            print(f"\n📋 Step 10: Formatting response data")
             
             # Extract sectors data with debugging
             sectors_data = summaries.get("sectors", [])
-            print(f"   🔍 Sectors data extracted: {len(sectors_data)} sectors")
-            for i, sector in enumerate(sectors_data):
-                print(f"      Sector {i+1}: {sector.get('title', 'No title')} - needs: {bool(sector.get('needs_summary'))}, actions: {bool(sector.get('actions_taken_summary'))}, future: {len(sector.get('future_actions', []))}")
-            
+
             summary_data = {
                 "operational_summary": summaries.get("operational_summary", ""),
                 "sectors": sectors_data,
@@ -551,26 +475,11 @@ class PerDrefLLMSummaryView(APIView):
                     "dref_title": dref_data.title,
                     "dref_date": dref_data.event_date,
                     "dref_created_at": dref_data.created_at if hasattr(dref_data, 'created_at') else None,
-                    "dref_budget_file_created_by": dref_data.budget_file_preview if hasattr(dref_data, 'budget_file_preview') else "",
-                    "dref_op_update_number": len(dref_data.operational_update_details) if hasattr(dref_data, 'operational_update_details') and dref_data.operational_update_details else 0,
-                    "operational_update_details": f"Event: {event.get('name')}, Source: {dref_source_used}, Reports: {len(field_reports)}"
+                    "dref_budget_file_created_by": getattr(dref_data, 'budget_file_preview', None),
+                    "dref_op_update_number": op_update_number
                 }
-            }
-            
-            print(f"   🔍 Final summary_data structure:")
-            print(f"      - operational_summary: {'✅' if summary_data['operational_summary'] else '❌'}")
-            print(f"      - sectors: {'✅' if summary_data['sectors'] else '❌'} ({len(summary_data['sectors'])} sectors)")
-            print(f"      - dref_type: {summary_data['dref_type']}")
-            print(f"      - dref_onset: {summary_data['dref_onset']}")
-            print(f"      - metadata: {summary_data['metadata']}")
-            print(f"   🔍 summary_data['sectors'] content: {summary_data['sectors']}")
-                        
-            print(f"\n📋 Step 11: Creating serializer")
+            }     
             serializer = PerDrefLLMSummarySerializer(summary_data)
-            print(f"   ✅ Serializer created successfully")
-            
-            print(f"\n🎉 SUCCESS: Returning response with status 200")
-            print("="*80)
             return Response(serializer.data, status=drf_status.HTTP_200_OK)
             
         except Exception as e:

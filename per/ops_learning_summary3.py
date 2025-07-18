@@ -105,96 +105,6 @@ class DrefSummaryTask:
         encoding = tiktoken.get_encoding(encoding_name)
         return len(encoding.encode(string))
     
-    @staticmethod
-    def get_latest_dref_version(dref_data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Get the latest DREF version based on operational updates.
-        
-        Steps:
-        1. Check if operational_update_details has more than 1 object
-        2. If yes, get the first position's id and check if it's published
-        3. If yes, use dref manager and dref filter to get the latest DREF values
-        4. If none of the above matched, return the current dref_data
-        """
-        logger.info("Starting DREF version resolution")
-        
-        try:
-            # Step 1: Check if operational_update_details has more than 1 object
-            operational_updates = dref_data.get('operational_update_details', [])
-            
-            if not operational_updates or len(operational_updates) <= 1:
-                logger.info("No operational updates or only one update found, using current DREF data")
-                return dref_data
-            
-            # Step 2: Get the first position's id and check if it's published
-            first_update = operational_updates[0]
-            update_id = first_update.get('id')
-            is_published = first_update.get('is_published', False)
-            
-            if not update_id or not is_published:
-                logger.info(f"First operational update (id: {update_id}) is not published, using current DREF data")
-                return dref_data
-            
-            # Step 3: Use dref manager to get the latest DREF values from op-update source
-            logger.info(f"Attempting to get updated DREF data using dref manager for update id: {update_id}")
-            
-            try:
-                # Create filter for the specific operational update ID
-                update_filter = DREFFilters(id=update_id)
-                
-                # Try to get the updated DREF data from op-update source
-                updated_dref_list = dref_manager.get_data('op-update', update_filter)
-                
-                if updated_dref_list:
-                    # Convert the first result back to dict format for consistency
-                    updated_dref_data = updated_dref_list[0]
-                    logger.info(f"Successfully retrieved updated DREF data for operational update id: {update_id}")
-                    
-                    # Convert DREFData object back to dict format
-                    updated_dict = {
-                        'id': updated_dref_data.id,
-                        'title': updated_dref_data.title,
-                        'operation_objective': getattr(updated_dref_data, 'operation_objective', None),
-                        'response_strategy': getattr(updated_dref_data, 'response_strategy', None),
-                        'amount_requested': updated_dref_data.amount_requested,
-                        'total_targeted_population': updated_dref_data.total_targeted_population,
-                        'operation_timeframe': getattr(updated_dref_data, 'operation_timeframe', None),
-                        'country_details': {
-                            'name': updated_dref_data.country_details.name,
-                            'iso': updated_dref_data.country_details.iso
-                        },
-                        'disaster_type_details': {
-                            'name': updated_dref_data.disaster_type_details.name
-                        },
-                        'event_date': updated_dref_data.event_date,
-                        'end_date': getattr(updated_dref_data, 'end_date', None),
-                        'planned_interventions': updated_dref_data.planned_interventions,
-                        'national_society_actions': updated_dref_data.national_society_actions,
-                        'needs_identified': updated_dref_data.needs_identified,
-                        'people_in_need': getattr(updated_dref_data, 'people_in_need', None),
-                        'human_resource': getattr(updated_dref_data, 'human_resource', None),
-                        'logistic_capacity_of_ns': getattr(updated_dref_data, 'logistic_capacity_of_ns', None),
-                        'pmer': getattr(updated_dref_data, 'pmer', None),
-                        'type_of_dref_display': updated_dref_data.type_of_dref_display,
-                        'type_of_onset_display': updated_dref_data.type_of_onset_display,
-                        'created_at': updated_dref_data.created_at,
-                        'operational_update_details': getattr(updated_dref_data, 'operational_update_details', [])
-                    }
-                    
-                    return updated_dict
-                else:
-                    logger.warning(f"No updated DREF data found for operational update id: {update_id}")
-                    
-            except Exception as e:
-                logger.error(f"Error retrieving updated DREF data: {e}")
-                
-        except Exception as e:
-            logger.error(f"Error in DREF version resolution: {e}", exc_info=True)
-        
-        # Step 4: If none of the above matched, return current dref_data
-        logger.info("Using current DREF data as fallback")
-        return dref_data
-    
     @classmethod
     def generate_operational_summary(cls, dref_data: Dict[str, Any]) -> Optional[str]:
         """Generate operational objective and strategy summary (3 lines max)"""
@@ -260,13 +170,12 @@ class DrefSummaryTask:
         "Focus on key challenges, gaps, and priority needs for humanitarian response.\n\n"
         "Requirements:\n"
         "- Plain text format (not JSON)\n"
-        "- Maximum 3-4 sentences\n"
+        "- Maximum 2 sentences\n"
         "- Include specific needs and vulnerabilities\n"
-        "- Focus on humanitarian gaps and operational requirements\n\n"
+        "- Focus on humanitarian gaps and operational requirements\n"
+        "- No extra spaces or line breaks\n\n"
         "Example:\n"
-        "The affected population faces critical water and sanitation challenges with 15,000 people lacking access to safe drinking water.\n"
-        "Emergency shelter needs are urgent as 3,000 families remain displaced in overcrowded temporary accommodations.\n"
-        "Health services require immediate strengthening to address increasing cases of waterborne diseases among vulnerable groups."
+        "The affected population faces critical water and sanitation challenges with 15,000 people lacking access to safe drinking water. Emergency shelter needs are urgent as 3,000 families remain displaced in overcrowded temporary accommodations."
     )
     
     actions_taken_summary_prompt = (
@@ -274,174 +183,243 @@ class DrefSummaryTask:
         "Focus on key actions implemented, resources deployed, and achievements made.\n\n"
         "Requirements:\n"
         "- Plain text format (not JSON)\n"
-        "- Maximum 3-4 sentences\n"
+        "- Maximum 2 sentences\n"
         "- Include specific actions and outcomes\n"
-        "- Highlight operational effectiveness and impact\n\n"
+        "- Highlight operational effectiveness and impact\n"
+        "- No extra spaces or line breaks\n\n"
         "Example:\n"
-        "The National Society has deployed 150 volunteers to distribute emergency relief items to 5,000 affected families.\n"
-        "Mobile health units have been established in 3 affected districts providing basic healthcare services to vulnerable populations.\n"
-        "Emergency communication systems have been activated to coordinate response activities with local authorities and partners."
+        "The National Society has deployed 150 volunteers to distribute emergency relief items to 5,000 affected families. Mobile health units have been established in 3 affected districts providing basic healthcare services to vulnerable populations."
     )
     
     @classmethod
     def generate_sector_summaries(cls, dref_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Generate sector-based summaries from DREF data"""
-        print(f"\n🔍 GENERATE_SECTOR_SUMMARIES: Starting with dref_data keys: {list(dref_data.keys())}")
         logger.info("Generating sector-based summaries")
         
         sectors = []
         
         # Get sector data organized by title
         sector_data = cls.organize_data_by_sector(dref_data)
-        print(f"🔍 GENERATE_SECTOR_SUMMARIES: organize_data_by_sector returned {len(sector_data)} sectors")
-        print(f"🔍 GENERATE_SECTOR_SUMMARIES: sector_data keys: {list(sector_data.keys())}")
         
         for sector_title, sector_info in sector_data.items():
-            print(f"\n🔍 PROCESSING SECTOR: {sector_title}")
-            print(f"🔍 SECTOR INFO: actions={len(sector_info.get('actions', []))}, needs={len(sector_info.get('needs', []))}, planned_interventions={len(sector_info.get('planned_interventions', []))}")
-            
             try:
+                # Get title_display (use first available title_display from any item in this sector)
+                title_display = sector_title
+                for item_list in [sector_info.get('actions', []), sector_info.get('needs', []), sector_info.get('planned_interventions', [])]:
+                    for item in item_list:
+                        if hasattr(item, 'title_display'):
+                            title_display = getattr(item, 'title_display', sector_title)
+                            break
+                        elif isinstance(item, dict) and 'title_display' in item:
+                            title_display = item['title_display']
+                            break
+                    if title_display != sector_title:
+                        break
+                
                 sector_summary = {
                     "title": sector_title,
+                    "title_display": title_display,
                     "actions_taken_summary": "",
                     "needs_summary": "",
                     "future_actions": []
                 }
                 
-                # Generate needs summary
+                # Generate needs summary using LLM
                 if sector_info.get('needs'):
-                    print(f"🔍 SECTOR {sector_title}: Generating needs summary for {len(sector_info['needs'])} needs")
                     needs_summary = cls.generate_needs_summary(sector_info['needs'])
-                    print(f"🔍 SECTOR {sector_title}: Needs summary result: {needs_summary[:100] if needs_summary else 'None'}...")
                     if needs_summary:
                         sector_summary["needs_summary"] = needs_summary
+                    else:
+                        print(f"NEEDS_SUMMARY: {sector_title} - FAILED Empty/None")
                 else:
-                    print(f"🔍 SECTOR {sector_title}: No needs data found")
+                    print(f"NEEDS_SUMMARY: {sector_title} - No needs data found")
                 
-                # Generate actions taken summary
+                # Generate actions taken summary using LLM (combine actions + planned interventions)
+                combined_actions_data = []
                 if sector_info.get('actions'):
-                    print(f"🔍 SECTOR {sector_title}: Generating actions summary for {len(sector_info['actions'])} actions")
-                    actions_summary = cls.generate_actions_summary(sector_info['actions'])
-                    print(f"🔍 SECTOR {sector_title}: Actions summary result: {actions_summary[:100] if actions_summary else 'None'}...")
-                    if actions_summary:
-                        sector_summary["actions_taken_summary"] = actions_summary
-                else:
-                    print(f"🔍 SECTOR {sector_title}: No actions data found")
+                    combined_actions_data.extend(sector_info['actions'])
+                if sector_info.get('planned_interventions'):
+                    combined_actions_data.extend(sector_info['planned_interventions'])
+                
+                if combined_actions_data:
+                    actions_taken_summary = cls.generate_actions_taken_summary(combined_actions_data)
+                    if actions_taken_summary:
+                        sector_summary["actions_taken_summary"] = actions_taken_summary
                 
                 # Process planned interventions for future actions
                 if sector_info.get('planned_interventions'):
-                    print(f"🔍 SECTOR {sector_title}: Processing {len(sector_info['planned_interventions'])} planned interventions")
                     future_actions = cls.process_planned_interventions(sector_info['planned_interventions'])
-                    print(f"🔍 SECTOR {sector_title}: Future actions result: {len(future_actions)} actions")
                     sector_summary["future_actions"] = future_actions
-                else:
-                    print(f"🔍 SECTOR {sector_title}: No planned interventions found")
                 
-                print(f"🔍 SECTOR {sector_title}: Final sector_summary: {sector_summary}")
                 sectors.append(sector_summary)
                 
             except Exception as e:
-                print(f"❌ ERROR processing sector {sector_title}: {e}")
                 logger.error(f"Error processing sector {sector_title}: {e}")
                 continue
-        
-        print(f"\n🔍 GENERATE_SECTOR_SUMMARIES: Final result - {len(sectors)} sectors generated")
-        for i, sector in enumerate(sectors):
-            print(f"🔍 SECTOR {i+1}: {sector['title']} - needs: {bool(sector['needs_summary'])}, actions: {bool(sector['actions_taken_summary'])}, future: {len(sector['future_actions'])}")
         
         logger.info(f"Generated {len(sectors)} sector summaries")
         return sectors
     
     @classmethod
     def organize_data_by_sector(cls, dref_data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
-        """Organize DREF data by sector"""
-        print(f"\n🔍 ORGANIZE_DATA_BY_SECTOR: Starting with dref_data keys: {list(dref_data.keys())}")
+        """Organize DREF data by sector - prioritizing planned_interventions as sector definitions"""
         sector_data = {}
         
-        # Process national society actions
-        actions = dref_data.get('national_society_actions', [])
-        print(f"🔍 ORGANIZE_DATA_BY_SECTOR: Found {len(actions)} national_society_actions")
-        for i, action in enumerate(actions):
-            sector_title = action.get('title', 'unknown')
-            print(f"🔍 ACTION {i+1}: title='{sector_title}', keys={list(action.keys())}")
-            if sector_title not in sector_data:
-                sector_data[sector_title] = {'actions': [], 'needs': [], 'planned_interventions': []}
-            sector_data[sector_title]['actions'].append(action)
-        
-        # Process needs identified
-        needs = dref_data.get('needs_identified', [])
-        print(f"🔍 ORGANIZE_DATA_BY_SECTOR: Found {len(needs)} needs_identified")
-        for i, need in enumerate(needs):
-            sector_title = need.get('title', 'unknown')
-            print(f"🔍 NEED {i+1}: title='{sector_title}', keys={list(need.keys())}")
-            if sector_title not in sector_data:
-                sector_data[sector_title] = {'actions': [], 'needs': [], 'planned_interventions': []}
-            sector_data[sector_title]['needs'].append(need)
-        
-        # Process planned interventions
+        # STEP 1: Process planned interventions FIRST to define sectors
         interventions = dref_data.get('planned_interventions', [])
-        print(f"🔍 ORGANIZE_DATA_BY_SECTOR: Found {len(interventions)} planned_interventions")
         for i, intervention in enumerate(interventions):
-            sector_title = intervention.get('title', 'unknown')
-            print(f"🔍 INTERVENTION {i+1}: title='{sector_title}', keys={list(intervention.keys())}")
+            # Handle both dict and dataclass objects
+            if hasattr(intervention, 'title'):
+                sector_title = getattr(intervention, 'title', 'unknown')
+            else:
+                sector_title = intervention.get('title', 'unknown')
             if sector_title not in sector_data:
                 sector_data[sector_title] = {'actions': [], 'needs': [], 'planned_interventions': []}
             sector_data[sector_title]['planned_interventions'].append(intervention)
         
-        print(f"🔍 ORGANIZE_DATA_BY_SECTOR: Final sector_data has {len(sector_data)} sectors:")
-        for sector_title, data in sector_data.items():
-            print(f"🔍   - {sector_title}: actions={len(data['actions'])}, needs={len(data['needs'])}, interventions={len(data['planned_interventions'])}")
+        # STEP 2: Match needs_identified to sectors defined by planned_interventions
+        needs = dref_data.get('needs_identified', [])
+        
+        for i, need in enumerate(needs):
+            # Handle both dict and dataclass objects
+            if hasattr(need, 'title'):
+                sector_title = getattr(need, 'title', 'unknown')
+            else:
+                sector_title = need.get('title', 'unknown')
+            
+            # Try exact match first
+            if sector_title in sector_data:
+                sector_data[sector_title]['needs'].append(need)
+            else:
+                # Try fuzzy matching for common mismatches
+                matched = False
+                for existing_sector in sector_data.keys():
+                    if cls._sectors_match(sector_title, existing_sector):
+                        sector_data[existing_sector]['needs'].append(need)
+                        matched = True
+                        break
+                
+                if not matched:
+                    print(f"NEEDS_MATCHING: NO MATCH '{sector_title}' - skipping need {i+1}")
+        
+        # STEP 3: Match national society actions to sectors
+        actions = dref_data.get('national_society_actions', [])
+        for i, action in enumerate(actions):
+            # Handle both dict and dataclass objects
+            if hasattr(action, 'title'):
+                sector_title = getattr(action, 'title', 'unknown')
+            else:
+                sector_title = action.get('title', 'unknown')
+            
+            # Only add actions if the sector was defined by planned_interventions
+            if sector_title in sector_data:
+                sector_data[sector_title]['actions'].append(action)
         
         return sector_data
     
     @classmethod
+    def _sectors_match(cls, need_title: str, intervention_title: str) -> bool:
+        """Check if sector titles match with fuzzy logic for common mismatches"""
+        # Common title mappings
+        mappings = {
+            'multi_purpose_cash_grants': 'multi_purpose_cash',
+            'shelter_housing_and_settlements': 'shelter',
+            'water_sanitation_and_hygiene': 'wash',
+            'livelihoods_and_basic_needs': 'livelihoods',
+            'protection_gender_and_inclusion': 'protection',
+            'coordination_and_partnerships': 'coordination',
+            'disaster_risk_reduction': 'drr',
+            'migration_and_displacement': 'migration'
+        }
+        
+        # Check direct mapping (need_title -> intervention_title)
+        if need_title in mappings and mappings[need_title] == intervention_title:
+            return True
+        
+        # Check reverse mapping (intervention_title -> need_title)
+        if intervention_title in mappings and mappings[intervention_title] == need_title:
+            return True
+        
+        # Special case: multi_purpose_cash_grants <-> multi_purpose_cash
+        if (need_title == 'multi_purpose_cash_grants' and intervention_title == 'multi_purpose_cash') or \
+           (need_title == 'multi_purpose_cash' and intervention_title == 'multi_purpose_cash_grants'):
+            return True
+        
+        # Check if one contains the other (partial match)
+        if need_title in intervention_title or intervention_title in need_title:
+            return True
+            
+        return False
+    
+    @classmethod
+    def _create_fallback_needs_summary(cls, combined_needs: str) -> str:
+        """Create a fallback summary when LLM is not available"""
+        # Extract key phrases and create a simple summary
+        sentences = combined_needs.split('.')
+        key_sentences = []
+        
+        for sentence in sentences[:3]:  # Take first 3 sentences
+            sentence = sentence.strip()
+            if len(sentence) > 20:  # Only meaningful sentences
+                key_sentences.append(sentence)
+        
+        if key_sentences:
+            return '. '.join(key_sentences[:2]) + '.'  # Max 2 sentences
+        else:
+            return "Critical needs have been identified requiring immediate humanitarian response."
+    
+    @classmethod
     def generate_needs_summary(cls, needs_data: List[Dict[str, Any]]) -> Optional[str]:
         """Generate needs summary using LLM"""
-        print(f"\n🔍 GENERATE_NEEDS_SUMMARY: Starting with {len(needs_data)} needs")
         if not needs_data:
-            print("🔍 GENERATE_NEEDS_SUMMARY: No needs data provided, returning None")
             return None
         
         try:
             # Combine all needs descriptions
-            combined_needs = "\n".join([need.get('description', '') for need in needs_data if need.get('description')])
-            print(f"🔍 GENERATE_NEEDS_SUMMARY: Combined needs length: {len(combined_needs)} characters")
-            print(f"🔍 GENERATE_NEEDS_SUMMARY: Combined needs preview: {combined_needs[:200]}...")
+            combined_needs = "\n".join([
+                getattr(need, 'description', '') if hasattr(need, 'description') else need.get('description', '')
+                for need in needs_data
+                if (getattr(need, 'description', '') if hasattr(need, 'description') else need.get('description', ''))
+            ])
             
             if not combined_needs.strip():
-                print("🔍 GENERATE_NEEDS_SUMMARY: No description content found, returning None")
                 return None
             
-            messages = [
-                {"role": "system", "content": cls.system_message},
-                {"role": "user", "content": f"Needs data:\n{combined_needs}\n\n{cls.needs_summary_prompt}"},
-                {"role": "assistant", "content": "I understand. I will analyze the needs data and provide a structured summary according to your specifications."}
-            ]
-            
-            print("🔍 GENERATE_NEEDS_SUMMARY: Calling Azure OpenAI...")
-            client = AzureOpenAiChat()
-            response = client.get_response(messages)
-            print(f"🔍 GENERATE_NEEDS_SUMMARY: Azure OpenAI response: {response[:200] if response else 'None'}...")
-            return response.strip() if response else None
+            try:
+                messages = [
+                    {"role": "system", "content": cls.system_message},
+                    {"role": "user", "content": f"Needs data:\n{combined_needs}\n\n{cls.needs_summary_prompt}"},
+                    {"role": "assistant", "content": "I understand. I will analyze the needs data and provide a structured summary according to your specifications."}
+                ]
+                
+                client = AzureOpenAiChat()
+                response = client.get_response(messages)
+                # Clean response: strip whitespace and remove extra line breaks
+                cleaned_response = ' '.join(response.strip().split()) if response else None
+                return cleaned_response
+            except Exception as llm_error:
+                # Fallback: Create a simple summary from the needs descriptions
+                print(f"NEEDS_SUMMARY: LLM failed, using fallback: {llm_error}")
+                return cls._create_fallback_needs_summary(combined_needs)
             
         except Exception as e:
-            print(f"❌ ERROR in generate_needs_summary: {e}")
             logger.error(f"Error generating needs summary: {e}")
             return None
     
     @classmethod
     def generate_actions_summary(cls, actions_data: List[Dict[str, Any]]) -> Optional[str]:
         """Generate actions taken summary using LLM"""
-        print(f"\n🔍 GENERATE_ACTIONS_SUMMARY: Starting with {len(actions_data)} actions")
         if not actions_data:
             print("🔍 GENERATE_ACTIONS_SUMMARY: No actions data provided, returning None")
             return None
         
         try:
             # Combine all actions descriptions
-            combined_actions = "\n".join([action.get('description', '') for action in actions_data if action.get('description')])
-            print(f"🔍 GENERATE_ACTIONS_SUMMARY: Combined actions length: {len(combined_actions)} characters")
-            print(f"🔍 GENERATE_ACTIONS_SUMMARY: Combined actions preview: {combined_actions[:200]}...")
+            combined_actions = "\n".join([
+                getattr(action, 'description', '') if hasattr(action, 'description') else action.get('description', '')
+                for action in actions_data
+                if (getattr(action, 'description', '') if hasattr(action, 'description') else action.get('description', ''))
+            ])
             
             if not combined_actions.strip():
                 print("🔍 GENERATE_ACTIONS_SUMMARY: No description content found, returning None")
@@ -453,11 +431,11 @@ class DrefSummaryTask:
                 {"role": "assistant", "content": "I understand. I will analyze the actions data and provide a structured summary according to your specifications."}
             ]
             
-            print("🔍 GENERATE_ACTIONS_SUMMARY: Calling Azure OpenAI...")
             client = AzureOpenAiChat()
             response = client.get_response(messages)
-            print(f"🔍 GENERATE_ACTIONS_SUMMARY: Azure OpenAI response: {response[:200] if response else 'None'}...")
-            return response.strip() if response else None
+            # Clean response: strip whitespace and remove extra line breaks
+            cleaned_response = ' '.join(response.strip().split()) if response else None
+            return cleaned_response
             
         except Exception as e:
             print(f"❌ ERROR in generate_actions_summary: {e}")
@@ -465,33 +443,101 @@ class DrefSummaryTask:
             return None
     
     @classmethod
+    def generate_actions_taken_summary(cls, combined_actions_data: List[Dict[str, Any]]) -> Optional[str]:
+        """Generate actions taken summary using LLM (combines national_society_actions + planned_interventions)"""
+        if not combined_actions_data:
+            print("🔍 GENERATE_ACTIONS_TAKEN_SUMMARY: No combined actions data provided, returning None")
+            return None
+        
+        try:
+            # Combine all descriptions from both actions and planned interventions
+            combined_descriptions = []
+            for item in combined_actions_data:
+                if hasattr(item, 'description'):
+                    desc = getattr(item, 'description', '')
+                else:
+                    desc = item.get('description', '')
+                
+                if desc:
+                    combined_descriptions.append(desc)
+            
+            combined_text = "\n".join(combined_descriptions)
+            
+            if not combined_text.strip():
+                print("🔍 GENERATE_ACTIONS_TAKEN_SUMMARY: No description content found, returning None")
+                return None
+            
+            # Create LLM prompt for actions taken summary
+            actions_taken_prompt = """
+            Based on the combined actions data provided (including both national society actions and planned interventions), 
+            create a comprehensive summary of all actions taken or planned in this sector.
+            
+            Requirements:
+            - Plain text format (not JSON)
+            - Maximum 2 sentences
+            - Describe key actions and interventions implemented or planned
+            - Highlight main outcomes and impacts
+            - Focus on what was done or will be done to address the needs
+            - No extra spaces or line breaks
+            
+            Example:
+            The National Society has provided emergency shelter assistance to 2,000 displaced families through distribution of tents and basic household items. Mobile health clinics have been deployed to affected areas, providing primary healthcare services to 5,000 vulnerable individuals.
+            """
+            
+            messages = [
+                {"role": "system", "content": cls.system_message},
+                {"role": "user", "content": f"Combined actions data:\n{combined_text}\n\n{actions_taken_prompt}"},
+                {"role": "assistant", "content": "I understand. I will analyze the combined actions data and provide a structured summary of actions taken."}
+            ]
+            
+            client = AzureOpenAiChat()
+            response = client.get_response(messages)
+            # Clean response: strip whitespace and remove extra line breaks
+            cleaned_response = ' '.join(response.strip().split()) if response else None
+            return cleaned_response
+            
+        except Exception as e:
+            logger.error(f"Error generating actions taken summary: {e}")
+            return None
+    
+    @classmethod
     def process_planned_interventions(cls, interventions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Process planned interventions into future actions format"""
-        print(f"\n🔍 PROCESS_PLANNED_INTERVENTIONS: Starting with {len(interventions)} interventions")
         future_actions = []
         
         for i, intervention in enumerate(interventions):
-            print(f"🔍 INTERVENTION {i+1}: keys={list(intervention.keys())}")
             try:
                 # Extract indicators
                 indicators = []
-                intervention_indicators = intervention.get('indicators', [])
-                print(f"🔍 INTERVENTION {i+1}: Found {len(intervention_indicators)} indicators")
+                # Handle both dict and dataclass objects
+                if hasattr(intervention, 'indicators'):
+                    intervention_indicators = getattr(intervention, 'indicators', [])
+                else:
+                    intervention_indicators = intervention.get('indicators', [])
                 
                 for j, indicator in enumerate(intervention_indicators):
-                    print(f"🔍 INDICATOR {j+1}: keys={list(indicator.keys())}, title='{indicator.get('title', '')}', target={indicator.get('target', 0)}")
+                    # Handle both dict and dataclass objects for indicators
+                    if hasattr(indicator, 'title'):
+                        indicator_title = getattr(indicator, 'title', '')
+                        indicator_target = getattr(indicator, 'target', 0)
+                    else:
+                        indicator_title = indicator.get('title', '')
+                        indicator_target = indicator.get('target', 0)
+                    
                     indicators.append({
-                        "title": indicator.get('title', ''),
-                        "people_targeted": indicator.get('target', 0)
+                        "title": indicator_title,
+                        "people_targeted": indicator_target
                     })
                 
                 # Calculate total people targeted
-                people_targeted_total = intervention.get('person_targeted', 0)
-                budget = intervention.get('budget', 0)
-                description = intervention.get('description', '')
-                
-                print(f"🔍 INTERVENTION {i+1}: budget={budget}, people_targeted_total={people_targeted_total}")
-                print(f"🔍 INTERVENTION {i+1}: description preview: {description[:100]}...")
+                if hasattr(intervention, 'person_targeted'):
+                    people_targeted_total = getattr(intervention, 'person_targeted', 0)
+                    budget = getattr(intervention, 'budget', 0)
+                    description = getattr(intervention, 'description', '')
+                else:
+                    people_targeted_total = intervention.get('person_targeted', 0)
+                    budget = intervention.get('budget', 0)
+                    description = intervention.get('description', '')
                 
                 future_action = {
                     "indicators": indicators,
@@ -500,7 +546,6 @@ class DrefSummaryTask:
                     "people_targeted_total": people_targeted_total
                 }
                 
-                print(f"🔍 INTERVENTION {i+1}: Created future_action: {future_action}")
                 future_actions.append(future_action)
                 
             except Exception as e:
@@ -514,9 +559,6 @@ class DrefSummaryTask:
     @classmethod
     def generate_dref_summaries(cls, dref_data: Dict[str, Any]) -> Dict[str, Any]:
         """Generate operational and sector-based summaries"""
-        print(f"\n🔍 GENERATE_DREF_SUMMARIES: Starting with dref_data keys: {list(dref_data.keys())}")
-        print(f"🔍 GENERATE_DREF_SUMMARIES: dref_data id: {dref_data.get('id')}")
-        print(f"🔍 GENERATE_DREF_SUMMARIES: dref_data title: {dref_data.get('title')}")
         logger.info("Starting DREF summary generation")
         
         result = {
@@ -525,64 +567,34 @@ class DrefSummaryTask:
             "status": "pending",
             "errors": []
         }
-        print(f"🔍 GENERATE_DREF_SUMMARIES: Initial result structure: {result}")
         
         try:
-            # Pre-processing: Get the latest DREF version
-            print("🔍 GENERATE_DREF_SUMMARIES: Pre-processing - Getting latest DREF version")
-            logger.info("Pre-processing: Getting latest DREF version")
-            latest_dref_data = cls.get_latest_dref_version(dref_data)
-            print(f"🔍 GENERATE_DREF_SUMMARIES: Latest DREF data keys: {list(latest_dref_data.keys())}")
-            print(f"🔍 GENERATE_DREF_SUMMARIES: Latest DREF data id: {latest_dref_data.get('id')}")
-            
-            # Generate operational summary
-            print("🔍 GENERATE_DREF_SUMMARIES: Generating operational summary")
-            operational_summary = cls.generate_operational_summary(latest_dref_data)
-            print(f"🔍 GENERATE_DREF_SUMMARIES: Operational summary result: {operational_summary[:100] if operational_summary else 'None'}...")
+            operational_summary = cls.generate_operational_summary(dref_data)
             if operational_summary:
                 result["operational_summary"] = operational_summary
-                print("🔍 GENERATE_DREF_SUMMARIES: Operational summary added to result")
-                logger.info("Operational summary generated successfully")
             else:
                 result["errors"].append("Failed to generate operational summary")
                 print("❌ GENERATE_DREF_SUMMARIES: Failed to generate operational summary")
-                logger.error("Failed to generate operational summary")
             
-            # Generate sector summaries
-            print("🔍 GENERATE_DREF_SUMMARIES: Generating sector summaries")
-            sectors = cls.generate_sector_summaries(latest_dref_data)
-            print(f"🔍 GENERATE_DREF_SUMMARIES: generate_sector_summaries returned {len(sectors)} sectors")
-            print(f"🔍 GENERATE_DREF_SUMMARIES: Sectors content: {sectors}")
+            sectors = cls.generate_sector_summaries(dref_data)
+
             if sectors:
                 result["sectors"] = sectors
-                print(f"🔍 GENERATE_DREF_SUMMARIES: {len(sectors)} sectors added to result")
-                logger.info(f"Generated {len(sectors)} sector summaries")
             else:
                 result["errors"].append("Failed to generate sector summaries")
                 print("❌ GENERATE_DREF_SUMMARIES: Failed to generate sector summaries (empty sectors list)")
                 logger.error("Failed to generate sector summaries")
             
-            # Set status
-            print(f"🔍 GENERATE_DREF_SUMMARIES: Setting status - operational_summary: {bool(result['operational_summary'])}, sectors: {len(result['sectors'])}")
             if result["operational_summary"] and result["sectors"]:
                 result["status"] = "success"
-                print("🔍 GENERATE_DREF_SUMMARIES: Status set to 'success'")
             elif result["operational_summary"] or result["sectors"]:
                 result["status"] = "partial_success"
-                print("🔍 GENERATE_DREF_SUMMARIES: Status set to 'partial_success'")
             else:
                 result["status"] = "failed"
-                print("🔍 GENERATE_DREF_SUMMARIES: Status set to 'failed'")
                 
         except Exception as e:
             print(f"❌ GENERATE_DREF_SUMMARIES: Exception occurred: {e}")
-            logger.error(f"Error in DREF summary generation: {e}", exc_info=True)
             result["status"] = "failed"
             result["errors"].append(f"Unexpected error: {str(e)}")
-        
-        print(f"🔍 GENERATE_DREF_SUMMARIES: Final result status: {result['status']}")
-        print(f"🔍 GENERATE_DREF_SUMMARIES: Final result operational_summary: {bool(result['operational_summary'])}")
-        print(f"🔍 GENERATE_DREF_SUMMARIES: Final result sectors count: {len(result['sectors'])}")
-        print(f"🔍 GENERATE_DREF_SUMMARIES: Final result errors: {result['errors']}")
-        logger.info(f"DREF summary generation completed with status: {result['status']}")
+
         return result

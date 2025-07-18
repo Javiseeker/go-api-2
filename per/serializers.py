@@ -1313,6 +1313,7 @@ class PerDrefLLMSummaryFutureActionSerializer(serializers.Serializer):
 class PerDrefLLMSummarySectorSerializer(serializers.Serializer):
     """Serializer for sector-based summaries"""
     title = serializers.CharField(required=False, allow_blank=True)
+    title_display = serializers.CharField(required=False, allow_blank=True)
     actions_taken_summary = serializers.CharField(required=False, allow_blank=True)
     needs_summary = serializers.CharField(required=False, allow_blank=True)
     future_actions = PerDrefLLMSummaryFutureActionSerializer(many=True, required=False)
