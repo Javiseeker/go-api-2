@@ -1584,7 +1584,7 @@ class IFRCEventListView(views.APIView):
 
         # Create events with ID mapping
         events_block = "\n".join(f"- {e['summary']}: {e['description']}" for e in structured_data)
-        event_id_mapping = "\n".join(f"- Event ID {e['event_id']}: {e['summary']}" for e in structured_data if e['event_id'])
+        event_id_mapping = "\n".join(f"- Event ID {e['event_id']}: {e['event_name']}" for e in structured_data if e['event_id'])
         
         learnings_block = "\n".join(
             f"- {l['id']}: {l['learning_text']}"
