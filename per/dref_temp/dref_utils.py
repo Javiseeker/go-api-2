@@ -154,6 +154,119 @@ class DREFManager:
             translation_module_original_language=data.get('translation_module_original_language', 'en')
         )
     
+    def _parse_national_society_actions(self, data: List[Dict]) -> List[NationalSocietyAction]:
+        """Parse national society actions from list of dictionaries"""
+        return [
+            NationalSocietyAction(
+                id=item.get('id', 0),
+                title=item.get('title', ''),
+                title_display=item.get('title_display', ''),
+                description=item.get('description', ''),
+                image_url=item.get('image_url', ''),
+                translation_module_original_language=item.get('translation_module_original_language', 'en')
+            )
+            for item in data
+        ]
+    
+    def _parse_needs_identified(self, data: List[Dict]) -> List[NeedIdentified]:
+        """Parse needs identified from list of dictionaries"""
+        return [
+            NeedIdentified(
+                id=item.get('id', 0),
+                title=item.get('title', ''),
+                title_display=item.get('title_display', ''),
+                description=item.get('description', ''),
+                image_url=item.get('image_url', ''),
+                translation_module_original_language=item.get('translation_module_original_language', 'en')
+            )
+            for item in data
+        ]
+    
+    def _parse_indicators(self, data: List[Dict]) -> List[Indicator]:
+        """Parse indicators from list of dictionaries"""
+        return [
+            Indicator(
+                id=item.get('id', 0),
+                title=item.get('title', ''),
+                target=item.get('target'),
+                actual=item.get('actual'),
+                translation_module_original_language=item.get('translation_module_original_language', 'en'),
+                translation_module_skip_auto_translation=item.get('translation_module_skip_auto_translation', False)
+            )
+            for item in data
+        ]
+    
+    def _parse_planned_interventions(self, data: List[Dict]) -> List[PlannedIntervention]:
+        """Parse planned interventions from list of dictionaries"""
+        return [
+            PlannedIntervention(
+                id=item.get('id', 0),
+                title=item.get('title', ''),
+                title_display=item.get('title_display', ''),
+                description=item.get('description', ''),
+                budget=item.get('budget', 0),
+                indicators=self._parse_indicators(item.get('indicators', [])),
+                person_targeted=item.get('person_targeted'),
+                person_assisted=item.get('person_assisted'),
+                male=item.get('male'),
+                female=item.get('female'),
+                image_url=item.get('image_url', ''),
+                translation_module_original_language=item.get('translation_module_original_language', 'en'),
+                translation_module_skip_auto_translation=item.get('translation_module_skip_auto_translation', False),
+                progress_towards_outcome=item.get('progress_towards_outcome'),
+                lessons_learnt=item.get('lessons_learnt'),
+                narrative_description_of_achievements=item.get('narrative_description_of_achievements'),
+                challenges=item.get('challenges')
+            )
+            for item in data
+        ]
+    
+    def _parse_risk_security(self, data: List[Dict]) -> List[RiskSecurity]:
+        """Parse risk security from list of dictionaries"""
+        return [
+            RiskSecurity(
+                id=item.get('id', 0),
+                risk=item.get('risk', ''),
+                mitigation=item.get('mitigation', ''),
+                client_id=item.get('client_id', ''),
+                translation_module_original_language=item.get('translation_module_original_language', 'en'),
+                translation_module_skip_auto_translation=item.get('translation_module_skip_auto_translation', False)
+            )
+            for item in data
+        ]
+    
+    def _parse_source_information(self, data: List[Dict]) -> List[SourceInformation]:
+        """Parse source information from list of dictionaries"""
+        return [
+            SourceInformation(
+                id=item.get('id', 0),
+                source_name=item.get('source_name', ''),
+                source_link=item.get('source_link', ''),
+                client_id=item.get('client_id', '')
+            )
+            for item in data
+        ]
+    
+    def _parse_images_file(self, data: List[Dict]) -> List[FileDetails]:
+        """Parse images file list from list of dictionaries"""
+        parsed_files = []
+        for item in data:
+            if item:
+                parsed_file = self._parse_file_details(item)
+                if parsed_file:
+                    parsed_files.append(parsed_file)
+        return parsed_files
+    
+    def _parse_users_details(self, data: List[Dict]) -> List[UserDetails]:
+        """Parse users details from list of dictionaries"""
+        parsed_users = []
+        for item in data:
+            if item:
+                parsed_user = self._parse_user_details(item)
+                if parsed_user:
+                    parsed_users.append(parsed_user)
+        return parsed_users
+    
     def _parse_base_dref(self, data: Dict) -> Dict:
         """Parse base DREF properties"""
         return {
@@ -200,17 +313,17 @@ class DREFManager:
             'national_society_contact_name': data.get('national_society_contact_name', ''),
             'national_society_contact_email': data.get('national_society_contact_email', ''),
             'national_society_contact_title': data.get('national_society_contact_title', ''),
-            'national_society_actions': [],  # Simplified for Django integration
-            'needs_identified': [],
-            'planned_interventions': [],
-            'risk_security': [],
-            'source_information': [],
+            'national_society_actions': self._parse_national_society_actions(data.get('national_society_actions', [])),
+            'needs_identified': self._parse_needs_identified(data.get('needs_identified', [])),
+            'planned_interventions': self._parse_planned_interventions(data.get('planned_interventions', [])),
+            'risk_security': self._parse_risk_security(data.get('risk_security', [])),
+            'source_information': self._parse_source_information(data.get('source_information', [])),
             'event_map_file': self._parse_file_details(data.get('event_map_file')),
             'cover_image_file': self._parse_file_details(data.get('cover_image_file')),
-            'images_file': [],
+            'images_file': self._parse_images_file(data.get('images_file', [])),
             'created_by_details': self._parse_user_details(data.get('created_by_details')),
             'modified_by_details': self._parse_user_details(data.get('modified_by_details')),
-            'users_details': [],
+            'users_details': self._parse_users_details(data.get('users_details', [])),
             'is_published': data.get('is_published', True),
             'translation_module_original_language': data.get('translation_module_original_language', 'en'),
             'translation_module_skip_auto_translation': data.get('translation_module_skip_auto_translation', False)
@@ -524,6 +637,57 @@ class DREFManager:
         """Clear all cached data"""
         self._cache.clear()
         self._parsed_cache.clear()
+    
+    @staticmethod
+    def get_latest_dref_version(dref_data: DREFData) -> DREFData:
+        """
+        Get the latest DREF version based on operational updates.
+        
+        Steps:
+        1. Check if operational_update_details has more than 1 object
+        2. If yes, get the first position's id and check if it's published
+        3. If yes, use dref manager and dref filter to get the latest DREF values
+        4. If none of the above matched, return the current dref_data
+        """
+        
+        try:
+            # Step 1: Check if operational_update_details has more than 1 object
+            operational_updates = getattr(dref_data, 'operational_update_details', [])
+            
+            if not operational_updates or len(operational_updates) <= 1:
+                return dref_data
+            
+            # Step 2: Get the first position's id and check if it's published
+            first_update = operational_updates[0]
+            update_id = first_update.get('id')
+            is_published = first_update.get('is_published', False)
+            
+            if not update_id or not is_published:
+                return dref_data
+            
+            # Step 3: Use dref manager to get the latest DREF values from op-update source
+            try:
+                # Create filter for the specific operational update ID
+                update_filter = DREFFilters(id=update_id)
+                
+                # Try to get the updated DREF data from op-update source
+                updated_dref_list = dref_manager.get_data('op-update', update_filter)
+                
+                if len(updated_dref_list) != 0:
+                    # Convert the first result back to dict format for consistency
+                    updated_dref_data = updated_dref_list[0]
+                    return updated_dref_data
+                else:
+                    print(f"No updated DREF data found for operational update id: {update_id}")
+                    
+            except Exception as e:
+                print(f"Error retrieving updated DREF data: {e}")
+                
+        except Exception as e:
+            print(f"Error in DREF version resolution: {e}")
+        
+        # Step 4: If none of the above matched, return current dref_data
+        return dref_data
 
 # Create a default instance for easy importing
 dref_manager = DREFManager()

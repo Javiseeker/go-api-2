@@ -1,0 +1,42 @@
+{
+  "operational_summary": "summary of the operation",
+  "sectors": [
+    {
+      "title": "",
+      "actions_taken_summary": "description",
+      "needs_summary": "description",
+      "future_actions": [
+        {
+          "indicators": [
+            {
+              "title": "",
+              "people_targeted": 0
+            },
+            {
+              "title": "",
+              "people_targeted": 0
+            },
+            {
+              "title": "",
+              "people_targeted": 0
+            }
+          ],
+          "budget": 0,
+          "description": "",
+          "people_targeted_total": 0
+        }
+      ]
+    }
+  ],
+
+  "dref_type": "",
+  "dref_onset": "",
+  "metadata": {
+    "dref_id": 0,
+    "dref_title": "",
+    "dref_date": "",
+    "dref_created_at": "",
+    "dref_budget_file": "",
+    "dref_op_update_number": 0
+  }
+}

@@ -5,12 +5,6 @@ from .models import (
     DREFData, DREFFinalReport, DREFOperationalUpdate, DREFBasic,
     CountryDetails, DistrictDetails, DisasterTypeDetails
 )
-from .examples import (
-    get_dref_statistics,
-    get_filtered_operations, 
-    search_operations,
-    get_filter_options
-)
 
 __all__ = [
     'dref_manager',
@@ -19,9 +13,5 @@ __all__ = [
     'DREFData',
     'DREFFinalReport', 
     'DREFOperationalUpdate',
-    'DREFBasic',
-    'get_dref_statistics',
-    'get_filtered_operations',
-    'search_operations', 
-    'get_filter_options'
+    'DREFBasic'
 ]
