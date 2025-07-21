@@ -67,9 +67,6 @@ class DrefSummaryTask:
         "The 4-month operation targets vulnerable households in 3 districts with a budget of CHF 250,000 focusing on immediate basic needs."
     )
 
-
-    # !!!!!!!!!!!!!! TO BE CHECKED !!!!!!!!!!
-    # Planned intervention summary prompt
     planned_intervention_summary_prompt = (
         "\nAnalyze the DREF planned interventions data and create a comprehensive summary of intervention activities:\n\n"
         "Provide a detailed analysis of each planned intervention including:\n"

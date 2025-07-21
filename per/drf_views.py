@@ -457,9 +457,6 @@ class PerDrefLLMSummaryView(APIView):
 
             from per.ops_learning_summary3 import DrefSummaryTask
 
-            # modify this code to NOT run the .get_latest_dref_version(dref_data), just use the dref data available.
-            # I have planned_interventions, national_society_actions and needs_identified in the dref_dict.
-
             summaries = DrefSummaryTask.generate_dref_summaries(dref_dict)
             
             # Extract sectors data with debugging
