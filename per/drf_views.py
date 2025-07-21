@@ -1568,20 +1568,24 @@ class IFRCEventListView(views.APIView):
                 "Each object **must** have exactly these three keys:\n\n"
                 "  • title   : a 3–5 word bold headline\n"
                 "  • insight : one or two full sentences summarizing the finding\n"
-                "  • sources : a JSON array of the IDs that back up this finding\n\n"
-                "**Do not** omit any field. **Do not** wrap your JSON in markdown.  "
+                "  • sources : a JSON object where keys are the EXACT Event IDs (numbers as strings) from the Event ID Mapping, and values are the corresponding event names\n\n"
+                "**CRITICAL**: Use only the Event IDs provided in the 'Event ID Mapping' section as source keys. "
+                "**Do not** create your own identifiers. **Do not** omit any field. **Do not** wrap your JSON in markdown.  "
                 "Example:\n"
                 "[\n"
                 "  {\"title\":\"Early Alerts Save Lives\",\n"
-                "   \"insight\":\"Issuing timely alerts ...\",\n"
-                "   \"sources\":[\"PAN: Flood - 2023-08\",\"PAN: Flood - 10-2024\"]\n"
+                "   \"insight\":\"Issuing timely alerts reduces casualties in coastal areas.\",\n"
+                "   \"sources\":{\"4317\":\"Denmark: COVID-19 outbreak\",\"1234\":\"Bangladesh: Cyclone Response\"}\n"
                 "  },\n"
                 "  …\n"
                 "]"
             )
         }
 
+        # Create events with ID mapping
         events_block = "\n".join(f"- {e['summary']}: {e['description']}" for e in structured_data)
+        event_id_mapping = "\n".join(f"- Event ID {e['event_id']}: {e['summary']}" for e in structured_data if e['event_id'])
+        
         learnings_block = "\n".join(
             f"- {l['id']}: {l['learning_text']}"
             for e in structured_data
@@ -1592,9 +1596,11 @@ class IFRCEventListView(views.APIView):
             "role": "user",
             "content": (
                 "Here are the events:\n" + events_block +
+                "\n\nEvent ID Mapping (use these IDs as source keys):\n" + event_id_mapping +
                 "\n\nHere are the learnings:\n" + learnings_block +
-                "\n\nPlease synthesize up to 6 **actionable insights**, "
-                "each with **title**, **insight** and **sources** as specified above. "
+                "\n\nPlease synthesize up to 6 **actionable insights**. "
+                "each with **title**, **insight** and **sources**."
+                "For sources, use the Event IDs from the mapping above as keys, with event names as values. "
                 "Return **only** the JSON array."
             )
         }
@@ -1621,5 +1627,5 @@ class IFRCEventListView(views.APIView):
         return [{
             "title":   "ParsingError",
             "insight": raw.strip(),
-            "sources": []
+            "sources": {}
         }]
