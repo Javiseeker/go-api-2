@@ -1,8 +1,10 @@
 import json
+import hashlib
 import tiktoken
 from typing import Dict, Any, Optional, List
 
 from django.conf import settings
+from django.core.cache import cache
 from django.utils.functional import cached_property
 from openai import AzureOpenAI
 
@@ -13,7 +15,9 @@ from per.dref_temp.dref_utils import DREFFilters
 
 
 class AzureOpenAiChat:
-    """Azure OpenAI client for DREF summary generation"""
+    """Azure OpenAI client for DREF summary generation with Redis caching"""
+    
+    CACHE_TTL = 3600  # 1 hour in seconds
 
     @cached_property
     def client(self):
@@ -22,15 +26,42 @@ class AzureOpenAiChat:
             api_key=settings.AZURE_OPENAI_KEY, 
             api_version="2023-05-15"
         )
+    
+    @staticmethod
+    def _generate_cache_key(messages: List[Dict[str, str]]) -> str:
+        """Generate a unique cache key based on messages content"""
+        # Create a deterministic hash from the messages
+        content = json.dumps(messages, sort_keys=True)
+        hash_obj = hashlib.md5(content.encode('utf-8'))
+        return f"dref_llm_response:{hash_obj.hexdigest()}"
 
     def get_response(self, message):
+        """Get LLM response with 1-hour Redis caching"""
+        # Generate cache key
+        cache_key = self._generate_cache_key(message)
+        
+        # Try to get from cache first
+        cached_response = cache.get(cache_key)
+        if cached_response is not None:
+            logger.info(f"Cache hit for key: {cache_key}")
+            return cached_response
+        
+        logger.info(f"Cache miss for key: {cache_key}")
+        
+        # Generate new response
         try:
             response = self.client.chat.completions.create(
                 model=settings.AZURE_OPENAI_DEPLOYMENT_NAME, 
                 messages=message, 
                 temperature=0.7
             )
-            return response.choices[0].message.content
+            response_content = response.choices[0].message.content
+            
+            # Cache the response for 1 hour
+            cache.set(cache_key, response_content, self.CACHE_TTL)
+            logger.info(f"Cached response for key: {cache_key}")
+            
+            return response_content
         except Exception as e:
             logger.error(f"Error while generating DREF summary response: {e}", exc_info=True)
             return None
