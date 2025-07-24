@@ -126,6 +126,35 @@ class DrefSummaryTask:
         "Partnerships: [Key implementing partners and coordination mechanisms]\n\n"
         "End with a STRATEGIC OVERVIEW section summarizing the overall intervention strategy and expected collective impact."
     )
+
+    # Sector-based summary prompts following operational_summary_prompt structure
+    needs_summary_prompt = (
+        "\nAnalyze the needs identified data and create a concise summary:\n"
+        "Focus on key challenges, gaps, and priority needs for humanitarian response.\n\n"
+        "Requirements:\n"
+        "- Plain text format (not JSON)\n"
+        "- Maximum 2 sentences\n"
+        "- Include specific needs and vulnerabilities\n"
+        "- Focus on humanitarian gaps and operational requirements\n"
+        "- No extra spaces or line breaks\n\n"
+        "Example:\n"
+        "The affected population faces critical water and sanitation challenges with 15,000 people lacking access to safe drinking water. Emergency shelter needs are urgent as 3,000 families remain displaced in overcrowded temporary accommodations."
+    )
+
+    needs_addressing_prompt = (
+        "\nExplain how this future action addresses the identified needs:\n"
+        "Write a concise sentence focusing on the specific solution and measurable outcomes, not repeating the problem statement.\n\n"
+        "Requirements:\n"
+        "- Be direct and solution-focused\n"
+        "- Plain text format (not JSON)\n"
+        "- Single flowing sentence\n"
+        "- Focus on what will be done and the impact, not what the problems are\n"
+        "- Include target numbers and specific actions\n"
+        "- Avoid repeating needs summary content\n"
+        "- No extra spaces or line breaks\n\n"
+        "Example:\n"
+        "The intervention will establish 12 water distribution points and distribute 5,000 hygiene kits to provide safe water access to 15,000 people in temporary settlements."
+    )
     
     # Situational overview prompt for new endpoint
     situational_overview_prompt = (
@@ -207,36 +236,6 @@ class DrefSummaryTask:
             logger.error(f"Error generating operational summary: {e}", exc_info=True)
             return None
 
-
-    # Sector-based summary prompts following operational_summary_prompt structure
-    needs_summary_prompt = (
-        "\nAnalyze the needs identified data and create a concise summary:\n"
-        "Focus on key challenges, gaps, and priority needs for humanitarian response.\n\n"
-        "Requirements:\n"
-        "- Plain text format (not JSON)\n"
-        "- Maximum 2 sentences\n"
-        "- Include specific needs and vulnerabilities\n"
-        "- Focus on humanitarian gaps and operational requirements\n"
-        "- No extra spaces or line breaks\n\n"
-        "Example:\n"
-        "The affected population faces critical water and sanitation challenges with 15,000 people lacking access to safe drinking water. Emergency shelter needs are urgent as 3,000 families remain displaced in overcrowded temporary accommodations."
-    )
-
-    needs_addressing_prompt = (
-        "\nExplain how this future action addresses the identified needs:\n"
-        "Write a concise sentence focusing on the specific solution and measurable outcomes, not repeating the problem statement.\n\n"
-        "Requirements:\n"
-        "- Be direct and solution-focused\n"
-        "- Plain text format (not JSON)\n"
-        "- Single flowing sentence\n"
-        "- Focus on what will be done and the impact, not what the problems are\n"
-        "- Include target numbers and specific actions\n"
-        "- Avoid repeating needs summary content\n"
-        "- No extra spaces or line breaks\n\n"
-        "Example:\n"
-        "The intervention will establish 12 water distribution points and distribute 5,000 hygiene kits to provide safe water access to 15,000 people in temporary settlements."
-    )
-    
     @classmethod
     def generate_sector_summaries(cls, dref_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Generate sector-based summaries from DREF data"""
