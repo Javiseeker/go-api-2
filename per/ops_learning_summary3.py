@@ -17,7 +17,7 @@ from per.dref_temp.dref_utils import DREFFilters
 class AzureOpenAiChat:
     """Azure OpenAI client for DREF summary generation with Redis caching"""
     
-    CACHE_TTL = 1  # 1 hour in seconds
+    CACHE_TTL = 3600  # 1 hour in seconds
 
     @cached_property
     def client(self):
@@ -220,7 +220,6 @@ class DrefSummaryTask:
         "Example:\n"
         "The intervention will establish 12 water distribution points and distribute 5,000 hygiene kits to provide safe water access to 15,000 people in temporary settlements."
     )
-    
     
     @classmethod
     def generate_sector_summaries(cls, dref_data: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -520,7 +519,7 @@ class DrefSummaryTask:
                     "budget": budget,
                     "people_targeted_total": people_targeted_total,
                     "needs_addressed": "",
-                    "_description": description  # Hidden description for internal use only
+                    "_description": description
                 }
                 
                 future_actions.append(future_action)
