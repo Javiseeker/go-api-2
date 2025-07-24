@@ -205,18 +205,20 @@ class DrefSummaryTask:
         "Example:\n"
         "The affected population faces critical water and sanitation challenges with 15,000 people lacking access to safe drinking water. Emergency shelter needs are urgent as 3,000 families remain displaced in overcrowded temporary accommodations."
     )
-    
-    actions_taken_summary_prompt = (
-        "\nAnalyze the national society actions data and create a concise summary:\n"
-        "Focus on key actions implemented, resources deployed, and achievements made.\n\n"
+
+    needs_addressing_prompt = (
+        "\nExplain how this future action addresses the identified needs:\n"
+        "Write a concise sentence focusing on the specific solution and measurable outcomes, not repeating the problem statement.\n\n"
         "Requirements:\n"
+        "- Be direct and solution-focused\n"
         "- Plain text format (not JSON)\n"
-        "- Maximum 2 sentences\n"
-        "- Include specific actions and outcomes\n"
-        "- Highlight operational effectiveness and impact\n"
+        "- Single flowing sentence\n"
+        "- Focus on what will be done and the impact, not what the problems are\n"
+        "- Include target numbers and specific actions\n"
+        "- Avoid repeating needs summary content\n"
         "- No extra spaces or line breaks\n\n"
         "Example:\n"
-        "The National Society has deployed 150 volunteers to distribute emergency relief items to 5,000 affected families. Mobile health units have been established in 3 affected districts providing basic healthcare services to vulnerable populations."
+        "The intervention will establish 12 water distribution points and distribute 5,000 hygiene kits to provide safe water access to 15,000 people in temporary settlements."
     )
     
     @classmethod
@@ -247,7 +249,6 @@ class DrefSummaryTask:
                 sector_summary = {
                     "title": sector_title,
                     "title_display": title_display,
-                    "actions_taken_summary": "",
                     "needs_summary": "",
                     "future_actions": []
                 }
@@ -262,21 +263,23 @@ class DrefSummaryTask:
                 else:
                     print(f"NEEDS_SUMMARY: {sector_title} - No needs data found")
                 
-                # Generate actions taken summary using LLM (combine actions + planned interventions)
-                combined_actions_data = []
-                if sector_info.get('actions'):
-                    combined_actions_data.extend(sector_info['actions'])
-                if sector_info.get('planned_interventions'):
-                    combined_actions_data.extend(sector_info['planned_interventions'])
-                
-                if combined_actions_data:
-                    actions_taken_summary = cls.generate_actions_taken_summary(combined_actions_data)
-                    if actions_taken_summary:
-                        sector_summary["actions_taken_summary"] = actions_taken_summary
                 
                 # Process planned interventions for future actions
                 if sector_info.get('planned_interventions'):
                     future_actions = cls.process_planned_interventions(sector_info['planned_interventions'])
+                    
+                    # Generate needs_addressed for each future action if needs_summary exists
+                    if sector_summary["needs_summary"]:
+                        for action in future_actions:
+                            needs_addressed = cls.generate_needs_addressed(
+                                sector_summary["needs_summary"], 
+                                action
+                            )
+                            if needs_addressed:
+                                action["needs_addressed"] = needs_addressed
+                            else:
+                                print(f"NEEDS_ADDRESSED: {sector_title} - FAILED Empty/None for action")
+                    
                     sector_summary["future_actions"] = future_actions
                 
                 sectors.append(sector_summary)
@@ -397,6 +400,42 @@ class DrefSummaryTask:
             return "Critical needs have been identified requiring immediate humanitarian response."
     
     @classmethod
+    def generate_needs_addressed(cls, needs_summary: str, future_action: Dict[str, Any]) -> Optional[str]:
+        """Generate needs addressed summary for a single future action using LLM"""
+        if not needs_summary or not future_action:
+            return None
+        
+        try:
+            # Get hidden description for internal use only
+            description = future_action.get('_description', 'No description available')
+            
+            # Format future action data without showing description anywhere
+            action_text = "Future Action:\n"
+            action_text += f"- Budget: {future_action.get('budget', 0)}\n"
+            action_text += f"- People Targeted: {future_action.get('people_targeted_total', 0)}\n"
+            
+            # Enhanced system message with description context but don't show description in user prompt
+            enhanced_system_message = f"{cls.system_message} The intervention involves: {description}"
+            
+            prompt_content = f"Needs Summary:\n{needs_summary}\n\n{action_text}\n\n{cls.needs_addressing_prompt}"
+            
+            messages = [
+                {"role": "system", "content": enhanced_system_message},
+                {"role": "user", "content": prompt_content},
+                {"role": "assistant", "content": "I understand. I will analyze how this specific action addresses the identified needs according to your specifications."}
+            ]
+            
+            client = AzureOpenAiChat()
+            response = client.get_response(messages)
+            # Clean response: strip whitespace and remove extra line breaks
+            cleaned_response = ' '.join(response.strip().split()) if response else None
+            return cleaned_response
+            
+        except Exception as e:
+            logger.error(f"Error generating needs addressed: {e}")
+            return None
+
+    @classmethod
     def generate_needs_summary(cls, needs_data: List[Dict[str, Any]]) -> Optional[str]:
         """Generate needs summary using LLM"""
         if not needs_data:
@@ -434,99 +473,7 @@ class DrefSummaryTask:
             logger.error(f"Error generating needs summary: {e}")
             return None
     
-    @classmethod
-    def generate_actions_summary(cls, actions_data: List[Dict[str, Any]]) -> Optional[str]:
-        """Generate actions taken summary using LLM"""
-        if not actions_data:
-            print("🔍 GENERATE_ACTIONS_SUMMARY: No actions data provided, returning None")
-            return None
-        
-        try:
-            # Combine all actions descriptions
-            combined_actions = "\n".join([
-                getattr(action, 'description', '') if hasattr(action, 'description') else action.get('description', '')
-                for action in actions_data
-                if (getattr(action, 'description', '') if hasattr(action, 'description') else action.get('description', ''))
-            ])
-            
-            if not combined_actions.strip():
-                print("🔍 GENERATE_ACTIONS_SUMMARY: No description content found, returning None")
-                return None
-            
-            messages = [
-                {"role": "system", "content": cls.system_message},
-                {"role": "user", "content": f"Actions data:\n{combined_actions}\n\n{cls.actions_taken_summary_prompt}"},
-                {"role": "assistant", "content": "I understand. I will analyze the actions data and provide a structured summary according to your specifications."}
-            ]
-            
-            client = AzureOpenAiChat()
-            response = client.get_response(messages)
-            # Clean response: strip whitespace and remove extra line breaks
-            cleaned_response = ' '.join(response.strip().split()) if response else None
-            return cleaned_response
-            
-        except Exception as e:
-            print(f"❌ ERROR in generate_actions_summary: {e}")
-            logger.error(f"Error generating actions summary: {e}")
-            return None
     
-    @classmethod
-    def generate_actions_taken_summary(cls, combined_actions_data: List[Dict[str, Any]]) -> Optional[str]:
-        """Generate actions taken summary using LLM (combines national_society_actions + planned_interventions)"""
-        if not combined_actions_data:
-            print("🔍 GENERATE_ACTIONS_TAKEN_SUMMARY: No combined actions data provided, returning None")
-            return None
-        
-        try:
-            # Combine all descriptions from both actions and planned interventions
-            combined_descriptions = []
-            for item in combined_actions_data:
-                if hasattr(item, 'description'):
-                    desc = getattr(item, 'description', '')
-                else:
-                    desc = item.get('description', '')
-                
-                if desc:
-                    combined_descriptions.append(desc)
-            
-            combined_text = "\n".join(combined_descriptions)
-            
-            if not combined_text.strip():
-                print("🔍 GENERATE_ACTIONS_TAKEN_SUMMARY: No description content found, returning None")
-                return None
-            
-            # Create LLM prompt for actions taken summary
-            actions_taken_prompt = """
-            Based on the combined actions data provided (including both national society actions and planned interventions), 
-            create a comprehensive summary of all actions taken or planned in this sector.
-            
-            Requirements:
-            - Plain text format (not JSON)
-            - Maximum 2 sentences
-            - Describe key actions and interventions implemented or planned
-            - Highlight main outcomes and impacts
-            - Focus on what was done or will be done to address the needs
-            - No extra spaces or line breaks
-            
-            Example:
-            The National Society has provided emergency shelter assistance to 2,000 displaced families through distribution of tents and basic household items. Mobile health clinics have been deployed to affected areas, providing primary healthcare services to 5,000 vulnerable individuals.
-            """
-            
-            messages = [
-                {"role": "system", "content": cls.system_message},
-                {"role": "user", "content": f"Combined actions data:\n{combined_text}\n\n{actions_taken_prompt}"},
-                {"role": "assistant", "content": "I understand. I will analyze the combined actions data and provide a structured summary of actions taken."}
-            ]
-            
-            client = AzureOpenAiChat()
-            response = client.get_response(messages)
-            # Clean response: strip whitespace and remove extra line breaks
-            cleaned_response = ' '.join(response.strip().split()) if response else None
-            return cleaned_response
-            
-        except Exception as e:
-            logger.error(f"Error generating actions taken summary: {e}")
-            return None
     
     @classmethod
     def process_planned_interventions(cls, interventions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -570,8 +517,9 @@ class DrefSummaryTask:
                 future_action = {
                     "indicators": indicators,
                     "budget": budget,
-                    "description": description,
-                    "people_targeted_total": people_targeted_total
+                    "people_targeted_total": people_targeted_total,
+                    "needs_addressed": "",
+                    "_description": description
                 }
                 
                 future_actions.append(future_action)
