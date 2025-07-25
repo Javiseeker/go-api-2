@@ -108,6 +108,7 @@ from .serializers import (
     PerAssessmentSerializer,
     PerDocumentUploadSerializer,
     PerDrefLLMSummarySerializer,
+    PerDrefSituationalOverviewSerializer,
     PerFileInputSerializer,
     PerFileSerializer,
     PerFormDataSerializer,
@@ -495,19 +496,29 @@ class PerDrefSituationalOverviewView(APIView):
                     "event_id": event_id
                 }, status=drf_status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-            # Step 6: Return the response
-            return Response({
+            # Step 6: Prepare situational overview focused metadata
+            response_data = {
                 "situational_overview": situational_overview,
                 "metadata": {
-                    "dref_id": dref_data.id,
+                    # Event-focused information (primary for situational overview)
                     "event_id": event_id,
                     "event_name": event.get("name"),
-                    "latest_update_number": latest_update_dict['operational_update_number'],
-                    "total_operational_updates": len(getattr(dref_data, 'operational_update_details', [])),
+                    "disaster_type": latest_update_dict['disaster_type_details']['name'],
                     "country": latest_update_dict['country_details']['name'],
-                    "disaster_type": latest_update_dict['disaster_type_details']['name']
+                    
+                    # Operational update context (key for understanding situation changes)
+                    "latest_update_number": latest_update_dict.get('operational_update_number'),
+                    "total_operational_updates": len(getattr(dref_data, 'operational_update_details', [])),
+                    
+                    # Basic DREF information (minimal, for reference)
+                    "dref_id": dref_data.id,
+                    "dref_title": getattr(dref_data, 'title', None),
+                    "dref_date": getattr(dref_data, 'date_of_approval', None)
                 }
-            }, status=drf_status.HTTP_200_OK)
+            }
+            
+            serializer = PerDrefSituationalOverviewSerializer(response_data)
+            return Response(serializer.data, status=drf_status.HTTP_200_OK)
             
         except Exception as e:
             logger.error(f"Error in PerDrefSituationalOverviewView: {e}", exc_info=True)

@@ -1344,3 +1344,32 @@ class PerDrefLLMSummarySerializer(serializers.Serializer):
     dref_type = serializers.CharField(required=False, allow_blank=True)
     dref_onset = serializers.CharField(required=False, allow_blank=True)
     metadata = PerDrefLLMSummaryMetadataSerializer(required=False)
+
+
+class PerDrefSituationalOverviewMetadataSerializer(serializers.Serializer):
+    """Serializer for DREF situational overview metadata - focuses on event and operational context"""
+    # Event-focused information (primary for situational overview)
+    event_id = serializers.IntegerField(required=False, allow_null=True)
+    event_name = serializers.CharField(required=False, allow_blank=True)
+    disaster_type = serializers.CharField(required=False, allow_blank=True)
+    country = serializers.CharField(required=False, allow_blank=True)
+    
+    # Operational update context (key for understanding situation changes)
+    latest_update_number = serializers.IntegerField(required=False, allow_null=True)
+    total_operational_updates = serializers.IntegerField(required=False, allow_null=True)
+    
+    # Basic DREF information (minimal, for reference)
+    dref_id = serializers.IntegerField(required=False, allow_null=True)
+    dref_title = serializers.CharField(required=False, allow_blank=True)
+    dref_date = serializers.DateField(required=False, allow_null=True)
+
+
+class PerDrefSituationalOverviewSerializer(serializers.Serializer):
+    """
+    DTO for PerDrefSituationalOverviewView response.
+    
+    situational_overview: 5-line paragraph summarizing event situation and operational objectives
+    metadata: Additional information about the DREF and event
+    """
+    situational_overview = serializers.CharField(required=False, allow_blank=True)
+    metadata = PerDrefSituationalOverviewMetadataSerializer(required=False)
