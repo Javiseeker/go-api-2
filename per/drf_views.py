@@ -5,6 +5,10 @@ import requests
 import pytz
 import httpx
 
+import pandas as pd
+from tempfile import NamedTemporaryFile
+from per.blob_upload import upload_to_blob
+
 # Django imports
 from django.conf import settings
 from django.db import transaction
@@ -1249,7 +1253,7 @@ class PerDocumentUploadViewSet(viewsets.ModelViewSet):
 
 class IFRCEventListView(views.APIView):
     """API view for fetching and enriching IFRC event data with operational learning insights."""
-    DISASTER_TYPE_EVENT_THRESHOLD = 3
+    DISASTER_TYPE_EVENT_THRESHOLD = 1
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.azure_client = AzureServiceClient()
@@ -1274,7 +1278,7 @@ class IFRCEventListView(views.APIView):
             for e in country_events:
                 merged.setdefault(e['id'], e)
             all_events = list(merged.values())
-            fallback_note = f"Only {len(disaster_events)} disaster-type events found; added country-level results."
+            fallback_note = f"{len(disaster_events)} disaster-type events found; added country-level results."
         else:
             all_events = disaster_events
 
@@ -1291,6 +1295,32 @@ class IFRCEventListView(views.APIView):
         }
         if fallback_note:
             response_payload['fallback_note'] = fallback_note
+
+                # 2) fetch ops learning
+        ops_learning = self._fetch_ops_learning(country_id, disaster_type_id).get('results', [])
+
+        # 3) join + generate
+        structured = self._join_events_and_learning(all_events, ops_learning)
+        ai_summary = self._generate_ai_summary(structured)
+
+        # 4) prepare response
+        response_payload = {
+            'ai_structured_summary': ai_summary
+        }
+
+        # Add fallback note for low event count
+        if len(disaster_events) < self.DISASTER_TYPE_EVENT_THRESHOLD:
+            response_payload['fallback_note'] = f"{len(disaster_events)} disaster-type events found; added country-level results."
+
+        # Add extra note if no learnings found
+        if not ops_learning:
+            response_payload['fallback_note'] = (
+                "No operational learnings have been recorded in the system for this context yet. "
+                "You're welcome to check the [Ops Learning dashboard](https://go.ifrc.org/deployments/ops-learning) "
+                "and the [IFRC’s evaluations database](https://www.ifrc.org/evaluations) to learn more."
+            )
+
+
 
         return Response(response_payload, status=drf_status.HTTP_200_OK)
 
@@ -1623,3 +1653,29 @@ class IFRCEventListView(views.APIView):
             "insight": raw.strip(),
             "sources": []
         }]
+
+class UploadDisasterExcel(APIView):
+    def get(self, request):
+        url = save_excel_to_blob()
+        return Response({"file_url": url})
+
+
+
+def save_excel_to_blob():
+    # 1. Create a DataFrame
+    df = pd.DataFrame({
+        "country": ["Panama", "Nepal"],
+        "dtype": ["Flood", "Earthquake"],
+        "count": [3, 5]
+    })
+
+    # 2. Save to a temporary Excel file
+    with NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+        df.to_excel(tmp.name, index=False)
+        file_path = tmp.name
+
+    # 3. Upload to Azure
+    blob_url = upload_to_blob(file_path, blob_name="disaster_summary.xlsx")
+
+    print("✔️ Uploaded to:", blob_url)
+    return blob_url
