@@ -126,6 +126,51 @@ class DrefSummaryTask:
         "Partnerships: [Key implementing partners and coordination mechanisms]\n\n"
         "End with a STRATEGIC OVERVIEW section summarizing the overall intervention strategy and expected collective impact."
     )
+
+    # Sector-based summary prompts following operational_summary_prompt structure
+    needs_summary_prompt = (
+        "\nAnalyze the needs identified data and create a concise summary:\n"
+        "Focus on key challenges, gaps, and priority needs for humanitarian response.\n\n"
+        "Requirements:\n"
+        "- Plain text format (not JSON)\n"
+        "- Maximum 2 sentences\n"
+        "- Include specific needs and vulnerabilities\n"
+        "- Focus on humanitarian gaps and operational requirements\n"
+        "- No extra spaces or line breaks\n\n"
+        "Example:\n"
+        "The affected population faces critical water and sanitation challenges with 15,000 people lacking access to safe drinking water. Emergency shelter needs are urgent as 3,000 families remain displaced in overcrowded temporary accommodations."
+    )
+
+    needs_addressing_prompt = (
+        "\nExplain how this future action addresses the identified needs:\n"
+        "Write a concise sentence focusing on the specific solution and measurable outcomes, not repeating the problem statement.\n\n"
+        "Requirements:\n"
+        "- Be direct and solution-focused\n"
+        "- Plain text format (not JSON)\n"
+        "- Single flowing sentence\n"
+        "- Focus on what will be done and the impact, not what the problems are\n"
+        "- Include target numbers and specific actions\n"
+        "- Avoid repeating needs summary content\n"
+        "- No extra spaces or line breaks\n\n"
+        "Example:\n"
+        "The intervention will establish 12 water distribution points and distribute 5,000 hygiene kits to provide safe water access to 15,000 people in temporary settlements."
+    )
+    
+    # Situational overview prompt for new endpoint
+    situational_overview_prompt = (
+        "Create a comprehensive 5-line situational overview paragraph based on the provided DREF operational update data.\n\n"
+        "STRUCTURE REQUIREMENTS:\n"
+        "- Lines 1-3: Focus on summarizing the event_description and event_scope from the latest operational update. These lines should provide context about the disaster situation, affected areas, and scale of impact.\n"
+        "- Lines 4-5: Focus on summarizing the operation_objective and response_strategy. These lines should explain WHY the operation is needed and the strategic rationale behind the response approach.\n\n"
+        "GUIDELINES:\n"
+        "- Each line should be a complete, well-structured sentence\n"
+        "- Maintain consistency and flow between all 5 lines\n"
+        "- Use professional humanitarian language\n"
+        "- Focus on factual information from the provided data\n"
+        "- Ensure the paragraph provides a clear situational understanding for decision-makers\n"
+        "- Lines 1-3 should paint the disaster picture, lines 4-5 should explain the response reasoning\n\n"
+        "Return only the 5-line paragraph without additional formatting or explanations."
+    )
     
     @staticmethod
     def count_tokens(string: str, encoding_name: str) -> int:
@@ -191,36 +236,6 @@ class DrefSummaryTask:
             logger.error(f"Error generating operational summary: {e}", exc_info=True)
             return None
 
-
-    # Sector-based summary prompts following operational_summary_prompt structure
-    needs_summary_prompt = (
-        "\nAnalyze the needs identified data and create a concise summary:\n"
-        "Focus on key challenges, gaps, and priority needs for humanitarian response.\n\n"
-        "Requirements:\n"
-        "- Plain text format (not JSON)\n"
-        "- Maximum 2 sentences\n"
-        "- Include specific needs and vulnerabilities\n"
-        "- Focus on humanitarian gaps and operational requirements\n"
-        "- No extra spaces or line breaks\n\n"
-        "Example:\n"
-        "The affected population faces critical water and sanitation challenges with 15,000 people lacking access to safe drinking water. Emergency shelter needs are urgent as 3,000 families remain displaced in overcrowded temporary accommodations."
-    )
-
-    needs_addressing_prompt = (
-        "\nExplain how this future action addresses the identified needs:\n"
-        "Write a concise sentence focusing on the specific solution and measurable outcomes, not repeating the problem statement.\n\n"
-        "Requirements:\n"
-        "- Be direct and solution-focused\n"
-        "- Plain text format (not JSON)\n"
-        "- Single flowing sentence\n"
-        "- Focus on what will be done and the impact, not what the problems are\n"
-        "- Include target numbers and specific actions\n"
-        "- Avoid repeating needs summary content\n"
-        "- No extra spaces or line breaks\n\n"
-        "Example:\n"
-        "The intervention will establish 12 water distribution points and distribute 5,000 hygiene kits to provide safe water access to 15,000 people in temporary settlements."
-    )
-    
     @classmethod
     def generate_sector_summaries(cls, dref_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Generate sector-based summaries from DREF data"""
@@ -474,6 +489,58 @@ class DrefSummaryTask:
             return None
     
     
+
+    @classmethod
+    def generate_situational_overview(cls, latest_operational_update: Dict[str, Any]) -> Optional[str]:
+        """Generate situational overview based on event data and operational objectives"""
+        logger.info("Generating DREF situational overview")
+        
+        # Extract data for situational overview: event info + operational objectives
+        situational_data = {
+            'event_description': latest_operational_update.get('event_description', ''),
+            'event_scope': latest_operational_update.get('event_scope', ''),
+            'operation_objective': latest_operational_update.get('operation_objective', ''),
+            'response_strategy': latest_operational_update.get('response_strategy', ''),
+            'title': latest_operational_update.get('title', ''),
+            'country_details': latest_operational_update.get('country_details', {}),
+            'disaster_type_details': latest_operational_update.get('disaster_type_details', {}),
+            'date_of_approval': latest_operational_update.get('date_of_approval', ''),
+        }
+        
+        data_json = json.dumps(situational_data, indent=2, ensure_ascii=False, default=str)
+        
+        # Create messages
+        messages = [
+            {"role": "system", "content": cls.system_message},
+            {"role": "user", "content": f"DREF Data to analyze:\n{data_json}\n\n{cls.situational_overview_prompt}"},
+            {"role": "assistant", "content": "I understand. I will analyze the DREF operational data and create a comprehensive 5-line situational overview paragraph focusing on event situation and operational objectives."}
+        ]
+        
+        # Token count validation
+        message_content = [msg["content"] for msg in messages]
+        text = " ".join(message_content)
+        token_count = cls.count_tokens(text, cls.ENCODING_NAME)
+        logger.info(f"DREF situational overview token count: {token_count}")
+        
+        if token_count > cls.PROMPT_LENGTH_LIMIT:
+            logger.warning("Prompt too long for situational overview")
+            return None
+        
+        try:
+            # Generate summary using Azure OpenAI
+            azure_client = AzureOpenAiChat()
+            ai_response = azure_client.get_response(messages)
+            
+            if ai_response and ai_response.strip():
+                logger.info("Successfully generated situational overview")
+                return ai_response.strip()
+            else:
+                logger.warning("Empty response from Azure OpenAI for situational overview")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error generating situational overview: {e}")
+            return None
     
     @classmethod
     def process_planned_interventions(cls, interventions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

@@ -689,5 +689,57 @@ class DREFManager:
         # Step 4: If none of the above matched, return current dref_data
         return dref_data
 
+    @staticmethod
+    def get_dref_summary_changes(dref_data: DREFData) -> List[Dict[str, Any]]:
+        """
+        Get all summary changes from DREF operational updates.
+        
+        Returns a list of summary changes with metadata for each operational update
+        that has a non-empty summary_of_change field.
+        
+        Returns:
+            List of dictionaries containing:
+            - update_number: operational update number
+            - summary: summary of changes text
+            - date: creation date of the update
+            - is_published: whether the update is published
+        """
+        summary_changes = []
+        
+        try:
+            # Get the DREF ID for filtering operational updates
+            dref_id = getattr(dref_data, 'id', None)
+            if not dref_id:
+                return summary_changes
+            
+            # Get all operational updates for this DREF
+            # Note: We need to filter manually since DREFFilters doesn't support parent dref filtering
+            all_operational_updates = dref_manager.get_data("op-update", DREFFilters())
+            
+            # Filter by parent DREF ID
+            dref_operational_updates = [
+                update for update in all_operational_updates 
+                if getattr(update, 'dref', None) == dref_id or getattr(update, 'dref_id', None) == dref_id
+            ]
+            
+            # Extract summary changes from each operational update
+            for update in dref_operational_updates:
+                summary_change = getattr(update, 'summary_of_change', '')
+                if summary_change and summary_change.strip():
+                    summary_changes.append({
+                        'update_number': getattr(update, 'operational_update_number', ''),
+                        'summary': summary_change.strip(),
+                        'date': getattr(update, 'created_at', ''),
+                        'is_published': getattr(update, 'is_published', False)
+                    })
+            
+            # Sort by operational update number (if available) or by date
+            summary_changes.sort(key=lambda x: (x.get('update_number') or 0, x.get('date') or ''), reverse=True)
+            
+        except Exception as e:
+            print(f"Error retrieving DREF summary changes: {e}")
+        
+        return summary_changes
+
 # Create a default instance for easy importing
 dref_manager = DREFManager()
