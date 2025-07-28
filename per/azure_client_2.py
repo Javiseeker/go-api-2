@@ -1,58 +1,55 @@
 """
-azure_client.py
-================
+response_service.py
+===================
 
-This module provides a thin wrapper around the Azure OpenAI Python SDK for
-generating RR (Rapid Response) form suggestions based on historical event data.
-It includes specialized methods for different sections of the RR form.
+Response generation service for RR Capacity Question processing.
+Fills missing fields: Notes and Recommended Actions.
 """
 
 from __future__ import annotations
 
 import os
-from typing import Iterable, List, Optional, Dict, Any, Union
+from typing import List, Dict, Any, Optional
 
 try:
     from openai import AzureOpenAI  # type: ignore
-    from openai.types.chat import ChatCompletionMessageParam  # type: ignore
 except ImportError:
     AzureOpenAI = None  # type: ignore
-    ChatCompletionMessageParam = None  # type: ignore
 
 
-class AzureServiceClient:
-    """Enhanced Azure OpenAI client for RR form generation and learning extraction."""
+class ResponseGenerationService:
+    """Service for generating capacity assessment responses."""
 
     def __init__(self) -> None:
-        # Attempt to read configuration from environment variables or Django settings
+        # Get configuration from environment variables or Django settings
         try:
             from django.conf import settings  # type: ignore
-            self.openai_endpoint: Optional[str] = getattr(settings, 'AZURE_OPENAI_ENDPOINT', None) or os.environ.get('AZURE_OPENAI_ENDPOINT')
-            self.openai_key: Optional[str] = getattr(settings, 'AZURE_OPENAI_KEY', None) or os.environ.get('AZURE_OPENAI_KEY')
-            self.openai_deployment: Optional[str] = getattr(settings, 'AZURE_OPENAI_DEPLOYMENT_NAME', None) or os.environ.get('AZURE_OPENAI_DEPLOYMENT_NAME')
+            self.endpoint: Optional[str] = getattr(settings, 'AZURE_OPENAI_ENDPOINT', None) or os.environ.get('AZURE_OPENAI_ENDPOINT')
+            self.key: Optional[str] = getattr(settings, 'AZURE_OPENAI_KEY', None) or os.environ.get('AZURE_OPENAI_KEY')
+            self.deployment: Optional[str] = getattr(settings, 'AZURE_OPENAI_DEPLOYMENT_NAME', None) or os.environ.get('AZURE_OPENAI_DEPLOYMENT_NAME')
         except ImportError:
             # Fallback to environment variables only
-            self.openai_endpoint = os.environ.get('AZURE_OPENAI_ENDPOINT')
-            self.openai_key = os.environ.get('AZURE_OPENAI_KEY')
-            self.openai_deployment = os.environ.get('AZURE_OPENAI_DEPLOYMENT_NAME')
+            self.endpoint = os.environ.get('AZURE_OPENAI_ENDPOINT')
+            self.key = os.environ.get('AZURE_OPENAI_KEY')
+            self.deployment = os.environ.get('AZURE_OPENAI_DEPLOYMENT_NAME')
 
-        if AzureOpenAI and self.openai_endpoint and self.openai_key and self.openai_deployment:
-            self.openai_client = AzureOpenAI(
-                azure_endpoint=self.openai_endpoint,
-                api_key=self.openai_key,
+        if AzureOpenAI and self.endpoint and self.key and self.deployment:
+            self.client = AzureOpenAI(
+                azure_endpoint=self.endpoint,
+                api_key=self.key,
                 api_version="2024-02-15-preview",
             )
         else:
-            self.openai_client = None
+            self.client = None
 
-    def _make_openai_request(self, messages: List[Dict[str, str]], temperature: float = 0.7, max_tokens: int = 1500) -> Optional[str]:
-        """Helper method to make OpenAI requests with error handling."""
-        if not self.openai_client or not self.openai_deployment:
+    def _make_request(self, messages: List[Dict[str, str]], temperature: float = 0.7, max_tokens: int = 1500) -> Optional[str]:
+        """Helper method to make requests with error handling."""
+        if not self.client or not self.deployment:
             return None
             
         try:
-            response = self.openai_client.chat.completions.create(
-                model=self.openai_deployment,
+            response = self.client.chat.completions.create(
+                model=self.deployment,
                 messages=messages,  # type: ignore
                 temperature=temperature,
                 max_tokens=max_tokens,
@@ -61,234 +58,131 @@ class AzureServiceClient:
         except Exception:
             return None
 
-    def get_structured_summary(self, summary: Optional[str], description: Optional[str], learning_data: Optional[Iterable[Dict[str, Any]]]) -> Optional[str]:
-        """Generate a structured summary using Azure OpenAI (legacy method)."""
-        if not self.openai_client:
+    def generate_response_notes(self, question_data: Dict[str, Any], event_data: List[Dict[str, Any]]) -> Optional[str]:
+        """Generate brief notes on response capacity based on question and historical data."""
+        if not self.client:
             return None
 
-        learning_texts: List[str] = []
-        if learning_data:
-            sorted_learnings = sorted(
-                learning_data,
-                key=lambda x: x.get('created_at', ''),
-                reverse=True,
-            )
-            for i, item in enumerate(sorted_learnings[:3]):
-                text = item.get('learning_text') or ''
-                if text:
-                    learning_texts.append(text)
+        area = question_data.get('Area', '')
+        critical_question = question_data.get('Critical Questions', '')
+        guiding_questions = question_data.get('Guiding/probing questions', '')
+        examples = question_data.get('Examples of recommended actions', '')
+        references = question_data.get('References', '')
 
-        combined_text = f"""
-Summary: {summary or ''}
-Description: {description or ''}
-
-Top 3 Learning Items:
-{chr(10).join([f"{i+1}. {t}" for i, t in enumerate(learning_texts)])}
-"""
+        # Format event data for context
+        events_context = self._format_events_for_assessment(event_data)
 
         messages = [
             {
                 "role": "system",
                 "content": (
-                    "Create a structured summary with 'Top 3 Learnings' as a heading followed by descriptions. "
-                    "Format the response with clear headings and bullet points."
-                ),
-            },
-            {
-                "role": "user",
-                "content": (
-                    "Based on this information, create a structured summary with 'Top 3 Learnings' as a heading and descriptions: "
-                    f"{combined_text}"
-                ),
-            },
-        ]
-
-        return self._make_openai_request(messages, temperature=0.7, max_tokens=1500)
-
-    def generate_situation_analysis(self, events: List[Dict[str, Any]]) -> Optional[str]:
-        """Generate situation analysis based on similar past events."""
-        if not events:
-            return None
-
-        events_data = self._format_events_for_analysis(events)
-        
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You are an emergency response analyst for the IFRC. Analyze historical disaster events "
-                    "to provide a situation analysis for rapid response planning. Focus on patterns, scale, "
-                    "and key characteristics that would inform current response decisions."
-                )
-            },
-            {
-                "role": "user", 
-                "content": (
-                    f"Based on these {len(events)} similar events, provide a concise situation analysis "
-                    f"covering: 1) Typical impact patterns, 2) Common challenges, 3) Scale expectations:\n\n"
-                    f"{events_data}"
-                )
-            }
-        ]
-        
-        return self._make_openai_request(messages, temperature=0.6)
-
-    def generate_response_strategy(self, events: List[Dict[str, Any]]) -> Optional[str]:
-        """Generate recommended response strategy based on past successful interventions."""
-        if not events:
-            return None
-
-        response_data = self._extract_response_patterns(events)
-        
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You are a rapid response coordinator for the IFRC. Based on historical response "
-                    "data, recommend strategic approaches that have proven effective for similar disasters."
+                    "You are an IFRC emergency response specialist conducting a rapid response capacity assessment. "
+                    "Provide BRIEF, CONCISE notes on response capacity. Keep responses short and focused. "
+                    "Use simple bullet points when appropriate (- for bullets). Avoid lengthy explanations. "
+                    "Focus on key observations and actionable insights only. "
+                    "Use PLAIN TEXT ONLY - no markdown formatting, no bold text, no headers."
                 )
             },
             {
                 "role": "user",
                 "content": (
-                    f"Based on response patterns from {len(events)} similar events, recommend a response "
-                    f"strategy covering: 1) Priority sectors, 2) Deployment approach, 3) Key partnerships:\n\n"
-                    f"{response_data}"
+                    f"Assessment Area: {area}\n\n"
+                    f"Critical Question: {critical_question}\n\n"
+                    f"Guiding Questions: {guiding_questions}\n\n"
+                    f"Examples: {examples}\n\n"
+                    f"References: {references}\n\n"
+                    f"Historical Context:\n{events_context}\n\n"
+                    f"Provide BRIEF notes on response capacity (max 3-4 bullet points). "
+                    f"Include source references where appropriate."
                 )
             }
         ]
-        
-        return self._make_openai_request(messages, temperature=0.6)
 
-    def generate_resource_recommendations(self, events: List[Dict[str, Any]]) -> Optional[str]:
-        """Generate resource deployment recommendations based on historical patterns."""
-        if not events:
+        return self._make_request(messages, temperature=0.6, max_tokens=400)
+
+    def generate_recommended_actions(self, question_data: Dict[str, Any], event_data: List[Dict[str, Any]]) -> Optional[str]:
+        """Generate brief recommended actions for continuation of response."""
+        if not self.client:
             return None
 
-        resource_data = self._extract_resource_patterns(events)
-        
+        area = question_data.get('Area', '')
+        critical_question = question_data.get('Critical Questions', '')
+        guiding_questions = question_data.get('Guiding/probing questions', '')
+        examples = question_data.get('Examples of recommended actions', '')
+
+        # Format event data for context
+        events_context = self._format_events_for_assessment(event_data)
+
         messages = [
             {
                 "role": "system",
                 "content": (
-                    "You are a resource planning specialist for the IFRC. Analyze historical deployment "
-                    "patterns to recommend optimal resource allocation for similar disaster responses."
+                    "You are an IFRC emergency response specialist providing actionable recommendations. "
+                    "Be CONCISE and SPECIFIC. Provide 2-3 brief, practical actions only. "
+                    "Use clear, direct language. Avoid lengthy explanations. "
+                    "Use PLAIN TEXT ONLY - no markdown formatting, no bold text, no headers. "
+                    "Use simple numbered list (1., 2., 3.) or bullet points (-)."
                 )
             },
             {
                 "role": "user",
                 "content": (
-                    f"Based on resource deployment from {len(events)} similar events, recommend: "
-                    f"1) Personnel needs, 2) ERU requirements, 3) Funding estimates:\n\n"
-                    f"{resource_data}"
+                    f"Assessment Area: {area}\n\n"
+                    f"Critical Question: {critical_question}\n\n"
+                    f"Guiding Questions: {guiding_questions}\n\n"
+                    f"Example Actions: {examples}\n\n"
+                    f"Historical Context:\n{events_context}\n\n"
+                    f"Provide 2-3 BRIEF, specific recommended actions for operational strategy. "
+                    f"Be direct and actionable."
                 )
             }
         ]
-        
-        return self._make_openai_request(messages, temperature=0.6)
 
-    def generate_timeline_suggestions(self, events: List[Dict[str, Any]]) -> Optional[str]:
-        """Generate timeline recommendations based on historical response patterns."""
+        return self._make_request(messages, temperature=0.6, max_tokens=300)
+
+    def process_capacity_question(self, question_data: Dict[str, Any], event_data: List[Dict[str, Any]]) -> Dict[str, Optional[str]]:
+        """Process a single RR capacity question and generate missing fields."""
+        return {
+            "Notes on Response include the source": self.generate_response_notes(question_data, event_data),
+            "Recommended actions for continuation of response": self.generate_recommended_actions(question_data, event_data)
+        }
+
+    def _format_events_for_assessment(self, events: List[Dict[str, Any]]) -> str:
+        """Format events data for capacity assessment context."""
         if not events:
-            return None
+            return "No historical event data available."
 
-        timeline_data = self._extract_timeline_patterns(events)
-        
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You are an operations planning specialist for the IFRC. Based on historical "
-                    "response timelines, provide realistic timeline recommendations for rapid response."
-                )
-            },
-            {
-                "role": "user",
-                "content": (
-                    f"Based on response timelines from {len(events)} similar events, suggest: "
-                    f"1) Immediate actions (0-72 hours), 2) Short-term goals (1-2 weeks), "
-                    f"3) Medium-term planning (1-3 months):\n\n{timeline_data}"
-                )
-            }
-        ]
-        
-        return self._make_openai_request(messages, temperature=0.6)
-
-    def _format_events_for_analysis(self, events: List[Dict[str, Any]]) -> str:
-        """Format events data for situation analysis."""
         formatted_events = []
-        for i, event in enumerate(events, 1):
-            event_info = [
-                f"Event {i}: {event.get('event_name', 'Unknown')}"
-            ]
+        for i, event in enumerate(events[:3], 1):  # Limit to top 3 most relevant events
+            event_info = [f"Event {i}: {event.get('event_name', 'Unknown')}"]
             
             if event.get('disaster_type'):
                 event_info.append(f"Type: {event['disaster_type']}")
             if event.get('country_names'):
                 event_info.append(f"Location: {event['country_names']}")
+            if event.get('disaster_start_date'):
+                event_info.append(f"Date: {event['disaster_start_date']}")
             if event.get('num_affected'):
                 event_info.append(f"Affected: {event['num_affected']:,}")
-            if event.get('severity_level'):
-                event_info.append(f"Severity: {event['severity_level']}")
+            
+            # Add response-specific information
+            response_details = []
+            if event.get('actions_taken'):
+                response_details.append(f"Actions: {event['actions_taken']}")
+            if event.get('num_volunteers'):
+                response_details.append(f"Volunteers: {event['num_volunteers']}")
+            if event.get('eru_type'):
+                response_details.append(f"ERU: {event['eru_type']}")
+            if event.get('appeal_amount_requested'):
+                response_details.append(f"Appeal: CHF {event['appeal_amount_requested']:,.0f}")
+            
+            if response_details:
+                event_info.append(f"Response: {'; '.join(response_details)}")
                 
             formatted_events.append(" | ".join(event_info))
             
         return "\n".join(formatted_events)
 
-    def _extract_response_patterns(self, events: List[Dict[str, Any]]) -> str:
-        """Extract response patterns from events data."""
-        patterns = []
-        
-        for i, event in enumerate(events, 1):
-            response_info = [f"Event {i} Response:"]
-            
-            if event.get('actions_taken'):
-                response_info.append(f"Actions: {event['actions_taken']}")
-            if event.get('num_volunteers'):
-                response_info.append(f"Volunteers: {event['num_volunteers']}")
-            if event.get('eru_type'):
-                response_info.append(f"ERU: {event['eru_type']}")
-            if event.get('appeal_amount_requested'):
-                response_info.append(f"Appeal: CHF {event['appeal_amount_requested']:,.0f}")
-                
-            patterns.append(" | ".join(response_info))
-            
-        return "\n".join(patterns)
 
-    def _extract_resource_patterns(self, events: List[Dict[str, Any]]) -> str:
-        """Extract resource deployment patterns from events data."""
-        resources = []
-        
-        for i, event in enumerate(events, 1):
-            resource_info = [f"Event {i} Resources:"]
-            
-            if event.get('num_volunteers'):
-                resource_info.append(f"Volunteers: {event['num_volunteers']}")
-            if event.get('num_localstaff'):
-                resource_info.append(f"Staff: {event['num_localstaff']}")
-            if event.get('personnel_roles'):
-                resource_info.append(f"Personnel: {event['personnel_roles']}")
-            if event.get('appeal_amount_funded'):
-                resource_info.append(f"Funded: CHF {event['appeal_amount_funded']:,.0f}")
-                
-            resources.append(" | ".join(resource_info))
-            
-        return "\n".join(resources)
-
-    def _extract_timeline_patterns(self, events: List[Dict[str, Any]]) -> str:
-        """Extract timeline patterns from events data."""
-        timelines = []
-        
-        for i, event in enumerate(events, 1):
-            timeline_info = [f"Event {i} Timeline:"]
-            
-            if event.get('disaster_start_date'):
-                timeline_info.append(f"Start: {event['disaster_start_date']}")
-            if event.get('field_report_date'):
-                timeline_info.append(f"First Report: {event['field_report_date']}")
-            if event.get('appeal_start_date'):
-                timeline_info.append(f"Appeal: {event['appeal_start_date']}")
-                
-            timelines.append(" | ".join(timeline_info))
-            
-        return "\n".join(timelines)
+# Legacy compatibility
+AzureServiceClient = ResponseGenerationService

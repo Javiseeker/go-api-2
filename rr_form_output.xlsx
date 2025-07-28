@@ -1,1 +1,0 @@
-{"timestamp":"2025-07-27T21:31:49.927028Z","error_code":500,"errors":{"non_field_errors":["Something unexpected has occured. Please contact an admin to fix this issue."],"internal_non_field_errors":["'RRFormView' object has no attribute '_fetch_events'"]}}

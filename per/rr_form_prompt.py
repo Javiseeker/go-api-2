@@ -1,9 +1,9 @@
 """
-rr_form_prompt.py
-==================
+response_templates.py
+=====================
 
-Enhanced prompt engineering system for generating comprehensive RR form suggestions.
-This module provides specialized prompt templates for different sections of the rapid
+Template system for generating comprehensive RR form suggestions.
+This module provides specialized templates for different sections of the rapid
 response form, designed to extract actionable insights from historical event data.
 
 The system generates evidence-based recommendations for:
@@ -24,8 +24,8 @@ from django.conf import settings  # type: ignore
 from openai import AzureOpenAI
 
 
-class AzureOpenAiChat:
-    """Enhanced Azure OpenAI client for RR form generation."""
+class ResponseGenerationClient:
+    """Response generation client for RR form creation."""
 
     def __init__(self) -> None:
         self._client: AzureOpenAI = AzureOpenAI(
@@ -35,7 +35,7 @@ class AzureOpenAiChat:
         )
 
     def get_response(self, messages: List[Dict[str, str]], temperature: float = 0.7, max_tokens: int = 2000) -> str:
-        """Send messages to Azure OpenAI and return the assistant's reply."""
+        """Send messages to response service and return the assistant's reply."""
         try:
             response = self._client.chat.completions.create(
                 model=settings.AZURE_OPENAI_DEPLOYMENT_NAME,
@@ -45,11 +45,11 @@ class AzureOpenAiChat:
             )
             return response.choices[0].message.content
         except Exception as e:
-            raise RuntimeError(f"Azure OpenAI request failed: {e}")
+            raise RuntimeError(f"Response generation request failed: {e}")
 
 
-class RRFormPromptTask:
-    """Enhanced prompt construction for comprehensive RR form suggestions."""
+class RRFormTemplateProcessor:
+    """Template processor for comprehensive RR form suggestions."""
 
     # Base system message for all RR form sections
     base_system_message: str = (
@@ -60,8 +60,8 @@ class RRFormPromptTask:
         "decision-making and resource allocation."
     )
 
-    # Specialized prompts for different RR form sections
-    situation_analysis_prompt: str = (
+    # Specialized templates for different RR form sections
+    situation_analysis_template: str = (
         "Based on the historical events provided, create a comprehensive situation analysis "
         "that covers:\n\n"
         "1. **Context & Scale**: Typical impact patterns, affected populations, and geographic scope\n"
@@ -72,7 +72,7 @@ class RRFormPromptTask:
         "Format as clear, evidence-based paragraphs suitable for briefing senior management."
     )
 
-    response_strategy_prompt: str = (
+    response_strategy_template: str = (
         "Based on successful response patterns from similar historical events, recommend "
         "an optimal response strategy that addresses:\n\n"
         "1. **Strategic Approach**: Primary response modalities and intervention priorities\n"
@@ -83,7 +83,7 @@ class RRFormPromptTask:
         "were successful. Include recommendations for adapting strategies to current context."
     )
 
-    resource_planning_prompt: str = (
+    resource_planning_template: str = (
         "Analyze historical resource deployment patterns to recommend optimal resource allocation:\n\n"
         "1. **Personnel Requirements**: Staffing levels, skill mix, and deployment timeline\n"
         "2. **ERU Deployment**: Emergency Response Unit types and capacity based on historical needs\n"
@@ -93,7 +93,7 @@ class RRFormPromptTask:
         "for resource recommendations. Include scaling factors for different scenario sizes."
     )
 
-    timeline_planning_prompt: str = (
+    timeline_planning_template: str = (
         "Based on historical response timelines, create a realistic operational timeline:\n\n"
         "1. **Immediate Actions (0-72 hours)**: Critical first response priorities\n"
         "2. **Short-term Goals (1-2 weeks)**: Early stabilization and assessment objectives\n"
@@ -103,7 +103,7 @@ class RRFormPromptTask:
         "accelerated or delayed responses. Include contingency considerations."
     )
 
-    risk_assessment_prompt: str = (
+    risk_assessment_template: str = (
         "Identify key risks and mitigation strategies based on historical challenges:\n\n"
         "1. **Operational Risks**: Access, security, coordination challenges from past events\n"
         "2. **Contextual Risks**: Political, social, environmental factors that affected responses\n"
@@ -113,7 +113,7 @@ class RRFormPromptTask:
         "and recommend preventive measures for current planning."
     )
 
-    lessons_learned_prompt: str = (
+    lessons_learned_template: str = (
         "Extract key lessons and best practices from historical events:\n\n"
         "1. **Success Factors**: What worked well and should be replicated\n"
         "2. **Challenges Overcome**: How historical responses overcame significant obstacles\n"
@@ -124,8 +124,8 @@ class RRFormPromptTask:
     )
 
     @staticmethod
-    def _format_events_for_prompt(events: List[Dict[str, Any]], focus_area: str) -> str:
-        """Format events data with focus on specific aspects relevant to the prompt."""
+    def _format_events_for_template(events: List[Dict[str, Any]], focus_area: str) -> str:
+        """Format events data with focus on specific aspects relevant to the template."""
         formatted_events = []
         
         for i, event in enumerate(events, 1):
@@ -172,75 +172,75 @@ class RRFormPromptTask:
 
     def generate_situation_analysis(self, events: List[Dict[str, Any]], temperature: float = 0.6) -> str:
         """Generate situation analysis based on historical events."""
-        events_text = self._format_events_for_prompt(events, "situation")
+        events_text = self._format_events_for_template(events, "situation")
         
         messages = [
             {"role": "system", "content": self.base_system_message},
-            {"role": "user", "content": f"{self.situation_analysis_prompt}\n\nHistorical Events Data:\n{events_text}"}
+            {"role": "user", "content": f"{self.situation_analysis_template}\n\nHistorical Events Data:\n{events_text}"}
         ]
         
-        chat = AzureOpenAiChat()
-        return chat.get_response(messages, temperature=temperature)
+        client = ResponseGenerationClient()
+        return client.get_response(messages, temperature=temperature)
 
     def generate_response_strategy(self, events: List[Dict[str, Any]], temperature: float = 0.6) -> str:
         """Generate response strategy recommendations."""
-        events_text = self._format_events_for_prompt(events, "response")
+        events_text = self._format_events_for_template(events, "response")
         
         messages = [
             {"role": "system", "content": self.base_system_message},
-            {"role": "user", "content": f"{self.response_strategy_prompt}\n\nHistorical Events Data:\n{events_text}"}
+            {"role": "user", "content": f"{self.response_strategy_template}\n\nHistorical Events Data:\n{events_text}"}
         ]
         
-        chat = AzureOpenAiChat()
-        return chat.get_response(messages, temperature=temperature)
+        client = ResponseGenerationClient()
+        return client.get_response(messages, temperature=temperature)
 
     def generate_resource_planning(self, events: List[Dict[str, Any]], temperature: float = 0.6) -> str:
         """Generate resource planning recommendations."""
-        events_text = self._format_events_for_prompt(events, "resources")
+        events_text = self._format_events_for_template(events, "resources")
         
         messages = [
             {"role": "system", "content": self.base_system_message},
-            {"role": "user", "content": f"{self.resource_planning_prompt}\n\nHistorical Events Data:\n{events_text}"}
+            {"role": "user", "content": f"{self.resource_planning_template}\n\nHistorical Events Data:\n{events_text}"}
         ]
         
-        chat = AzureOpenAiChat()
-        return chat.get_response(messages, temperature=temperature)
+        client = ResponseGenerationClient()
+        return client.get_response(messages, temperature=temperature)
 
     def generate_timeline_planning(self, events: List[Dict[str, Any]], temperature: float = 0.6) -> str:
         """Generate timeline and milestone recommendations."""
-        events_text = self._format_events_for_prompt(events, "timeline")
+        events_text = self._format_events_for_template(events, "timeline")
         
         messages = [
             {"role": "system", "content": self.base_system_message},
-            {"role": "user", "content": f"{self.timeline_planning_prompt}\n\nHistorical Events Data:\n{events_text}"}
+            {"role": "user", "content": f"{self.timeline_planning_template}\n\nHistorical Events Data:\n{events_text}"}
         ]
         
-        chat = AzureOpenAiChat()
-        return chat.get_response(messages, temperature=temperature)
+        client = ResponseGenerationClient()
+        return client.get_response(messages, temperature=temperature)
 
     def generate_risk_assessment(self, events: List[Dict[str, Any]], temperature: float = 0.6) -> str:
         """Generate risk assessment and mitigation strategies."""
-        events_text = self._format_events_for_prompt(events, "situation")
+        events_text = self._format_events_for_template(events, "situation")
         
         messages = [
             {"role": "system", "content": self.base_system_message},
-            {"role": "user", "content": f"{self.risk_assessment_prompt}\n\nHistorical Events Data:\n{events_text}"}
+            {"role": "user", "content": f"{self.risk_assessment_template}\n\nHistorical Events Data:\n{events_text}"}
         ]
         
-        chat = AzureOpenAiChat()
-        return chat.get_response(messages, temperature=temperature)
+        client = ResponseGenerationClient()
+        return client.get_response(messages, temperature=temperature)
 
     def generate_lessons_learned(self, events: List[Dict[str, Any]], temperature: float = 0.6) -> str:
         """Extract lessons learned and best practices."""
-        events_text = self._format_events_for_prompt(events, "response")
+        events_text = self._format_events_for_template(events, "response")
         
         messages = [
             {"role": "system", "content": self.base_system_message},
-            {"role": "user", "content": f"{self.lessons_learned_prompt}\n\nHistorical Events Data:\n{events_text}"}
+            {"role": "user", "content": f"{self.lessons_learned_template}\n\nHistorical Events Data:\n{events_text}"}
         ]
         
-        chat = AzureOpenAiChat()
-        return chat.get_response(messages, temperature=temperature)
+        client = ResponseGenerationClient()
+        return client.get_response(messages, temperature=temperature)
 
     def generate_comprehensive_rr_suggestions(self, events: List[Dict[str, Any]]) -> Dict[str, str]:
         """Generate comprehensive RR form suggestions for all sections."""
@@ -252,38 +252,38 @@ class RRFormPromptTask:
         try:
             suggestions["situation_analysis"] = self.generate_situation_analysis(events)
         except Exception:
-            suggestions["situation_analysis"] = "Unable to generate situation analysis - please check Azure OpenAI configuration"
+            suggestions["situation_analysis"] = "Unable to generate situation analysis - please check service configuration"
 
         try:
             suggestions["response_strategy"] = self.generate_response_strategy(events)
         except Exception:
-            suggestions["response_strategy"] = "Unable to generate response strategy - please check Azure OpenAI configuration"
+            suggestions["response_strategy"] = "Unable to generate response strategy - please check service configuration"
 
         try:
             suggestions["resource_planning"] = self.generate_resource_planning(events)
         except Exception:
-            suggestions["resource_planning"] = "Unable to generate resource planning - please check Azure OpenAI configuration"
+            suggestions["resource_planning"] = "Unable to generate resource planning - please check service configuration"
 
         try:
             suggestions["timeline_planning"] = self.generate_timeline_planning(events)
         except Exception:
-            suggestions["timeline_planning"] = "Unable to generate timeline planning - please check Azure OpenAI configuration"
+            suggestions["timeline_planning"] = "Unable to generate timeline planning - please check service configuration"
 
         try:
             suggestions["risk_assessment"] = self.generate_risk_assessment(events)
         except Exception:
-            suggestions["risk_assessment"] = "Unable to generate risk assessment - please check Azure OpenAI configuration"
+            suggestions["risk_assessment"] = "Unable to generate risk assessment - please check service configuration"
 
         try:
             suggestions["lessons_learned"] = self.generate_lessons_learned(events)
         except Exception:
-            suggestions["lessons_learned"] = "Unable to generate lessons learned - please check Azure OpenAI configuration"
+            suggestions["lessons_learned"] = "Unable to generate lessons learned - please check service configuration"
 
         return suggestions
 
     # Legacy method for backward compatibility
     def get_rr_summary(self, events: Iterable[Dict[str, Any]], temperature: float = 0.5) -> str:
-        """Generate a narrative summary for the RR form via Azure OpenAI (legacy method)."""
+        """Generate a narrative summary for the RR form (legacy method)."""
         events_list = list(events)
         
         # Use the comprehensive generation but return as a single summary
@@ -295,3 +295,8 @@ class RRFormPromptTask:
                 summary_parts.append(f"**{section.replace('_', ' ').title()}**\n{content}")
         
         return "\n\n".join(summary_parts) if summary_parts else "Unable to generate comprehensive summary"
+
+
+# Legacy compatibility
+AzureOpenAiChat = ResponseGenerationClient
+RRFormPromptTask = RRFormTemplateProcessor
