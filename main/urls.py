@@ -64,6 +64,7 @@ from per import drf_views as per_views
 from per.views import LearningTypes
 from per.drf_views import IFRCEventListView
 from per.drf_views import UploadDisasterExcel
+from per.rr_endpoint import RRFormView
 from registrations import drf_views as registration_views
 from registrations.drf_views import RegistrationView
 from registrations.views import UserExternalTokenViewset, ValidateUser, VerifyEmail
@@ -235,6 +236,7 @@ urlpatterns = [
     url(r"^api/v2/delegation-office/", DelegationOfficeListAPIView.as_view()),
     url(r"^api/v2/per-dref-status/", per_views.PerDrefStatusView.as_view()),
     url(r"^api/v2/per-dref-summary/", per_views.PerDrefLLMSummaryView.as_view()),
+    url(r"^api/v2/rr-form/", RRFormView.as_view()),
     url(r"^tinymce/", include("tinymce.urls")),
     url(r"^$", RedirectView.as_view(url="/admin")),
     # url(r'^', admin.site.urls),
