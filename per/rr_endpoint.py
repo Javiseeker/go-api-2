@@ -16,7 +16,7 @@ from django.http import HttpResponse
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-
+from django.core.cache import cache
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 
@@ -35,16 +35,15 @@ class RRCapacityQuestionsView(APIView):
         self.response_service = AzureServiceClient()
 
     def get(self, request, *args: Any, **kwargs: Any) -> Response:
-        """Process RR capacity questions and generate filled Excel file."""
         country_param = request.query_params.get("country")
         dtype_param = request.query_params.get("disaster_type")
 
-        # Validate required parameters
         if not country_param or not dtype_param:
             return Response(
                 {"detail": 'Both "country" and "disaster_type" query parameters are required.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        
         try:
             country_id = int(country_param)
             disaster_type_id = int(dtype_param)
@@ -54,39 +53,34 @@ class RRCapacityQuestionsView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # Step 1: Check Redis cache
+        cache_key = f"rr_capacity_excel:{country_id}:{disaster_type_id}"
+        cached_url = cache.get(cache_key)
+        if cached_url:
+            return Response({"file_url": cached_url}, status=status.HTTP_200_OK)
+
         try:
-            # Load the parsed questions data
             questions_data = self._load_questions_data()
-            
-            # Fetch relevant events for context
             events_data = self._fetch_relevant_events(country_id, disaster_type_id)
-            
-            # Process questions and fill missing fields
             processed_questions = self._process_questions(questions_data, events_data)
-            
             filename = f"rr_capacity_filled_{country_id}_{disaster_type_id}.xlsx"
             workbook = self._create_rr_capacity_excel(processed_questions, country_id, disaster_type_id)
 
-            # Save Excel to temp file
             with NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
                 workbook.save(tmp.name)
                 file_path = tmp.name
 
-            # Upload to Azure Blob
             blob_url = upload_to_blob(file_path, blob_name=filename)
-
-            # Clean up temp file (optional, since delete=False)
             os.remove(file_path)
 
-            # Return blob URL
-            return Response(
-                {"file_url": blob_url},
-                status=status.HTTP_200_OK
-            )
             
+            cache.set(cache_key, blob_url, timeout=3600)
+
+            return Response({"file_url": blob_url}, status=status.HTTP_200_OK)
+
         except FileNotFoundError:
             return Response(
-                {"detail": "RR capacity questions data file not found. Please ensure rr_parsed_excel.json exists."},
+                {"detail": "RR capacity questions data file not found."},
                 status=status.HTTP_404_NOT_FOUND,
             )
         except Exception as e:
