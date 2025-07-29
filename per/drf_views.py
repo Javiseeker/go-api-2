@@ -392,6 +392,7 @@ class PerDrefLLMSummaryView(APIView):
                 "metadata": {
                     "dref_id": dref_data.id,
                     "dref_title": dref_data.title,
+                    "dref_appeal_code": dref_data.appeal_code,
                     "dref_date": dref_data.event_date,
                     "dref_created_at": dref_data.created_at if hasattr(dref_data, 'created_at') else None,
                     "dref_budget_file": getattr(dref_data, 'budget_file_preview', None),
@@ -513,6 +514,7 @@ class PerDrefSituationalOverviewView(APIView):
                     # Basic DREF information (minimal, for reference)
                     "dref_id": dref_data.id,
                     "dref_title": getattr(dref_data, 'title', None),
+                    "dref_appeal_code": getattr(dref_data, 'appeal_code', None),
                     "dref_date": getattr(dref_data, 'date_of_approval', None)
                 }
             }
