@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from typing import Any, Dict, List
-
+import os
 import httpx
 from django.http import HttpResponse
 from rest_framework import status
@@ -21,6 +21,9 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 
 from .azure_client_2 import AzureServiceClient
+
+from tempfile import NamedTemporaryFile
+from per.blob_upload import upload_to_blob
 
 
 class RRCapacityQuestionsView(APIView):
@@ -61,16 +64,25 @@ class RRCapacityQuestionsView(APIView):
             # Process questions and fill missing fields
             processed_questions = self._process_questions(questions_data, events_data)
             
-            # Generate Excel file
-            workbook = self._create_rr_capacity_excel(processed_questions, country_id, disaster_type_id)
-            
-            response = HttpResponse(
-                content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            )
             filename = f"rr_capacity_filled_{country_id}_{disaster_type_id}.xlsx"
-            response["Content-Disposition"] = f"attachment; filename={filename}"
-            workbook.save(response)
-            return response
+            workbook = self._create_rr_capacity_excel(processed_questions, country_id, disaster_type_id)
+
+            # Save Excel to temp file
+            with NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+                workbook.save(tmp.name)
+                file_path = tmp.name
+
+            # Upload to Azure Blob
+            blob_url = upload_to_blob(file_path, blob_name=filename)
+
+            # Clean up temp file (optional, since delete=False)
+            os.remove(file_path)
+
+            # Return blob URL
+            return Response(
+                {"file_url": blob_url},
+                status=status.HTTP_200_OK
+            )
             
         except FileNotFoundError:
             return Response(
