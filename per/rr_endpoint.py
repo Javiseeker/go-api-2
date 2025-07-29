@@ -62,8 +62,15 @@ class RRCapacityQuestionsView(APIView):
         try:
             questions_data = self._load_questions_data()
             events_data = self._fetch_relevant_events(country_id, disaster_type_id)
-            processed_questions = self._process_questions(questions_data, events_data)
+            
+            # Fetch ops-learning data
+            ops_learning_data = self._fetch_ops_learning_data(country_id, disaster_type_id)
+            
+            # Process questions and fill missing fields
+            processed_questions = self._process_questions(questions_data, events_data, ops_learning_data)
+            
             filename = f"rr_capacity_filled_{country_id}_{disaster_type_id}.xlsx"
+            # Generate Excel file
             workbook = self._create_rr_capacity_excel(processed_questions, country_id, disaster_type_id)
 
             with NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
@@ -95,23 +102,42 @@ class RRCapacityQuestionsView(APIView):
             return json.load(f)
 
     def _fetch_relevant_events(self, country_id: int, disaster_type_id: int) -> List[Dict[str, Any]]:
-        """Fetch relevant events for context."""
-        # Fetch events with matching country and disaster type
-        primary_events = self._fetch_events(country_id, disaster_type_id, limit=3)
+        """Fetch relevant events: 1 disaster type specific + 5 country specific."""
+        # Fetch disaster type + country specific events (priority)
+        disaster_events = self._fetch_events(country_id, disaster_type_id, limit=1)
         
-        # Also fetch events from the same country for broader context
-        country_events = self._fetch_events_by_country_only(country_id, limit=6)
+        # Fetch country-only events for broader context
+        country_events = self._fetch_events_by_country_only(country_id, limit=5)
         
         # Combine and deduplicate
         all_events = []
         event_ids = set()
         
-        for event in primary_events + country_events:
+        for event in disaster_events + country_events:
             if event.get('id') not in event_ids:
                 all_events.append(event)
                 event_ids.add(event.get('id'))
         
         return all_events[:6]  # Limit to 6 events for context
+
+    def _fetch_ops_learning_data(self, country_id: int, disaster_type_id: int) -> List[Dict[str, Any]]:
+        """Fetch ops-learning data: 1 disaster type specific + 5 country specific."""
+        # Fetch disaster type + country specific learning (priority)
+        disaster_learning = self._fetch_ops_learning(country_id, disaster_type_id, limit=1)
+        
+        # Fetch country-only learning for broader context
+        country_learning = self._fetch_ops_learning_by_country_only(country_id, limit=5)
+        
+        # Combine and deduplicate
+        all_learning = []
+        learning_ids = set()
+        
+        for learning in disaster_learning + country_learning:
+            if learning.get('id') not in learning_ids:
+                all_learning.append(learning)
+                learning_ids.add(learning.get('id'))
+        
+        return all_learning[:6]  # Limit to 6 learning entries for context
 
     def _fetch_events(self, country_id: int, disaster_type_id: int, limit: int = 10) -> List[Dict[str, Any]]:
         """Fetch events filtered by both country and disaster type."""
@@ -142,7 +168,40 @@ class RRCapacityQuestionsView(APIView):
         except Exception:
             return []
 
-    def _process_questions(self, questions_data: List[Dict[str, Any]], events_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _fetch_ops_learning(self, country_id: int, disaster_type_id: int, limit: int = 10) -> List[Dict[str, Any]]:
+        """Fetch ops-learning filtered by both country and disaster type."""
+        params: Dict[str, Any] = {
+            "country_in": country_id,
+            "dtype": disaster_type_id,
+            "limit": limit,
+            "is_validated": "true"
+        }
+        url = f"{self.base_url}/ops-learning/"
+        try:
+            response = httpx.get(url, params=params, timeout=10.0)
+            response.raise_for_status()
+            data = response.json()
+            return data.get("results", [])
+        except Exception:
+            return []
+
+    def _fetch_ops_learning_by_country_only(self, country_id: int, limit: int = 10) -> List[Dict[str, Any]]:
+        """Fetch ops-learning filtered only by country for broader context."""
+        params: Dict[str, Any] = {
+            "country_in": country_id, 
+            "limit": limit,
+            "is_validated": "true"
+        }
+        url = f"{self.base_url}/ops-learning/"
+        try:
+            response = httpx.get(url, params=params, timeout=10.0)
+            response.raise_for_status()
+            data = response.json()
+            return data.get("results", [])
+        except Exception:
+            return []
+
+    def _process_questions(self, questions_data: List[Dict[str, Any]], events_data: List[Dict[str, Any]], ops_learning_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Process each question and fill missing fields using response generation service."""
         processed_questions = []
         
@@ -161,7 +220,7 @@ class RRCapacityQuestionsView(APIView):
             if needs_processing:
                 try:
                     # Use response service to fill missing fields
-                    generated_responses = self.response_service.process_capacity_question(question, events_data)
+                    generated_responses = self.response_service.process_capacity_question(question, events_data, ops_learning_data)
                     
                     # Update the question with generated responses
                     for field_name, response in generated_responses.items():

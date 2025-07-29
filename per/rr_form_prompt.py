@@ -129,42 +129,96 @@ class RRFormTemplateProcessor:
         formatted_events = []
         
         for i, event in enumerate(events, 1):
-            event_summary = [f"Event {i}: {event.get('event_name', 'Unknown')}"]
+            # Use correct API field names
+            event_name = event.get('name', 'Unknown')
+            event_summary = [f"Event {i}: {event_name}"]
             
-            # Basic event information
-            if event.get('disaster_type'):
-                event_summary.append(f"Type: {event['disaster_type']}")
-            if event.get('country_names'):
-                event_summary.append(f"Location: {event['country_names']}")
+            # Basic event information using correct API structure
+            dtype_info = event.get('dtype', {})
+            if isinstance(dtype_info, dict) and dtype_info.get('name'):
+                event_summary.append(f"Type: {dtype_info['name']}")
+            elif event.get('dtype_name'):  # Fallback for flat structure
+                event_summary.append(f"Type: {event['dtype_name']}")
+                
+            # Country from nested structure
+            countries = event.get('countries', [])
+            if countries and len(countries) > 0:
+                country_name = countries[0].get('name', 'Unknown')
+                event_summary.append(f"Location: {country_name}")
+            elif event.get('country_name'):  # Fallback
+                event_summary.append(f"Location: {event['country_name']}")
+                
+            # Date fields
             if event.get('disaster_start_date'):
-                event_summary.append(f"Date: {event['disaster_start_date']}")
+                event_summary.append(f"Date: {event['disaster_start_date'][:10]}")
+            elif event.get('start_date'):
+                event_summary.append(f"Date: {event['start_date'][:10]}")
             
             # Focus-specific information
             if focus_area == "situation":
                 if event.get('num_affected'):
                     event_summary.append(f"Affected: {event['num_affected']:,}")
-                if event.get('severity_level'):
-                    event_summary.append(f"Severity: {event['severity_level']}")
+                if event.get('ifrc_severity_level_display'):
+                    event_summary.append(f"Severity: {event['ifrc_severity_level_display']}")
                     
             elif focus_area == "response":
-                if event.get('actions_taken'):
-                    event_summary.append(f"Actions: {event['actions_taken']}")
-                if event.get('eru_type'):
-                    event_summary.append(f"ERU: {event['eru_type']}")
-                    
+                # Extract from field reports
+                field_reports = event.get('field_reports', [])
+                if field_reports:
+                    field_report = field_reports[0] if isinstance(field_reports, list) else field_reports
+                    if field_report.get('summary'):
+                        summary_text = field_report['summary'][:100]
+                        event_summary.append(f"Actions: {summary_text}{'...' if len(field_report['summary']) > 100 else ''}")
+                    if field_report.get('num_volunteers'):
+                        event_summary.append(f"Volunteers: {field_report['num_volunteers']}")
+                        
             elif focus_area == "resources":
-                if event.get('num_volunteers'):
-                    event_summary.append(f"Volunteers: {event['num_volunteers']}")
-                if event.get('appeal_amount_requested'):
-                    event_summary.append(f"Appeal: CHF {event['appeal_amount_requested']:,.0f}")
-                if event.get('personnel_roles'):
-                    event_summary.append(f"Personnel: {event['personnel_roles']}")
-                    
+                # Extract from field reports and appeals
+                field_reports = event.get('field_reports', [])
+                if field_reports:
+                    field_report = field_reports[0] if isinstance(field_reports, list) else field_reports
+                    if field_report.get('num_volunteers'):
+                        event_summary.append(f"Volunteers: {field_report['num_volunteers']}")
+                    if field_report.get('num_localstaff'):
+                        event_summary.append(f"Local Staff: {field_report['num_localstaff']}")
+                    if field_report.get('num_expats_delegates'):
+                        event_summary.append(f"International: {field_report['num_expats_delegates']}")
+                
+                appeals = event.get('appeals', [])
+                if appeals:
+                    appeal = appeals[0] if isinstance(appeals, list) else appeals
+                    if appeal.get('amount_requested'):
+                        event_summary.append(f"Appeal: CHF {appeal['amount_requested']:,.0f}")
+                    if appeal.get('num_beneficiaries'):
+                        event_summary.append(f"Beneficiaries: {appeal['num_beneficiaries']:,}")
+                        
             elif focus_area == "timeline":
-                if event.get('field_report_date'):
-                    event_summary.append(f"First Report: {event['field_report_date']}")
-                if event.get('appeal_start_date'):
-                    event_summary.append(f"Appeal Launch: {event['appeal_start_date']}")
+                # Extract from field reports and appeals
+                field_reports = event.get('field_reports', [])
+                if field_reports:
+                    field_report = field_reports[0] if isinstance(field_reports, list) else field_reports
+                    if field_report.get('report_date'):
+                        event_summary.append(f"First Report: {field_report['report_date'][:10]}")
+                
+                appeals = event.get('appeals', [])
+                if appeals:
+                    appeal = appeals[0] if isinstance(appeals, list) else appeals
+                    if appeal.get('start_date'):
+                        event_summary.append(f"Appeal Launch: {appeal['start_date'][:10]}")
+                        
+            elif focus_area == "risk":
+                # Risk-specific information
+                if event.get('ifrc_severity_level_display'):
+                    event_summary.append(f"Severity: {event['ifrc_severity_level_display']}")
+                if event.get('num_affected'):
+                    event_summary.append(f"Affected: {event['num_affected']:,}")
+                # Extract context from field reports for risk assessment
+                field_reports = event.get('field_reports', [])
+                if field_reports:
+                    field_report = field_reports[0] if isinstance(field_reports, list) else field_reports
+                    if field_report.get('summary'):
+                        summary_text = field_report['summary'][:80]
+                        event_summary.append(f"Context: {summary_text}{'...' if len(field_report['summary']) > 80 else ''}")
                     
             formatted_events.append(" | ".join(event_summary))
             
@@ -220,7 +274,7 @@ class RRFormTemplateProcessor:
 
     def generate_risk_assessment(self, events: List[Dict[str, Any]], temperature: float = 0.6) -> str:
         """Generate risk assessment and mitigation strategies."""
-        events_text = self._format_events_for_template(events, "situation")
+        events_text = self._format_events_for_template(events, "risk")
         
         messages = [
             {"role": "system", "content": self.base_system_message},
