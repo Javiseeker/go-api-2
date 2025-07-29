@@ -63,7 +63,6 @@ from notifications import drf_views as notification_views
 from per import drf_views as per_views
 from per.views import LearningTypes
 from per.drf_views import IFRCEventListView
-from per.drf_views import UploadDisasterExcel
 from per.rr_endpoint import RRCapacityQuestionsView
 from registrations import drf_views as registration_views
 from registrations.drf_views import RegistrationView
@@ -186,7 +185,6 @@ admin.site.site_title = "IFRC Go admin"
 
 urlpatterns = [
     url(r"^api/v2/ifrc-events/", IFRCEventListView.as_view()),
-    url(r"^api/v2/upload-disaster-excel/?$", UploadDisasterExcel.as_view()),
     # url(r"^api/v1/es_search/", EsPageSearch.as_view()),
     url(r"^api/v1/search/", HayStackSearch.as_view()),
     url(r"^api/v1/es_health/", EsPageHealth.as_view()),
