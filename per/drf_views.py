@@ -1293,67 +1293,75 @@ class IFRCEventListView(views.APIView):
         self.azure_client = AzureServiceClient()
 
     def get(self, request) -> Response:
-        """Handle GET requests for IFRC event data with fallback logic and AI-generated insights."""
-        
-        
-        validation_response = self._validate_request_params(request)
-        if validation_response:
-            return validation_response
+        # Validate parameters
+        resp = self._validate_request_params(request)
+        if resp:
+            return resp
 
         country_id = int(request.query_params['country'])
         disaster_type_id = int(request.query_params['disaster_type'])
 
-        
-        disaster_events = self._fetch_events(country_id, disaster_type_id).get('results', [])
-        all_events = disaster_events
-        fallback_note = None
+        # STEP 1: primary (country AND disaster)
+        primary = self._fetch_ops_learning(country_id, disaster_type_id)
+        primary_labeled = [
+            {**l, "source_note": "This insight was built off similar disasters from the same country."}
+            for l in primary
+        ]
 
-        
-        if len(disaster_events) < self.DISASTER_TYPE_EVENT_THRESHOLD:
-            country_events = self._fetch_events_by_country_only(country_id).get('results', [])
-            merged = {e['id']: e for e in disaster_events}
-            for e in country_events:
-                merged.setdefault(e['id'], e)
-            all_events = list(merged.values())
+        # STEP 2: fallback (country only)
+        if not primary:
+            secondary = self._fetch_ops_learning(country_id, None)
+        else:
+            all_country = self._fetch_ops_learning(country_id, None)
+            primary_ids = {p['id'] for p in primary}
+            secondary = [l for l in all_country if l['id'] not in primary_ids]
 
-            fallback_note = f"{len(disaster_events)} disaster-type events found; added country-level results."
+        secondary_labeled = [
+            {**l, "source_note": "This insight was built off other disasters from the same country."}
+            for l in secondary
+        ]
 
-        
-        if not all_events:
-            return Response(
-                {
-                    "detail": (
-                        "No IFRC events found for the provided country and disaster type.\n"
-                        "Please verify that the IDs are correct or try a different combination."
-                    ),
-                    "ai_structured_summary": []
-                },
-                status=drf_status.HTTP_404_NOT_FOUND
+        # STEP 3: Combine both sets of learning and pad out to up to 6 items
+        combined_learning = (primary_labeled + secondary_labeled)[:6]
+
+        if not combined_learning:
+            return Response({
+                "ai_structured_summary": [],
+                "fallback_note": (
+                    "No operational learnings have been recorded in the system for this context yet. "
+                    "You're welcome to check the [Ops Learning dashboard]"
+                    "(https://go.ifrc.org/deployments/ops-learning) "
+                    "and the [IFRC’s evaluations database]"
+                    "(https://www.ifrc.org/evaluations) to learn more."
+                )
+            }, status=drf_status.HTTP_200_OK)
+
+        # STEP 4: Convert raw learning entries into the expected format
+        processed_learnings = [self._create_learning_entry(l) for l in combined_learning]
+        for pl in processed_learnings:
+            pl["source_note"] = next(
+                l["source_note"]
+                for l in combined_learning
+                if l["id"] == pl["id"]
             )
 
-        
-        ops_learning = self._fetch_ops_learning(country_id, disaster_type_id).get('results', [])
+        # STEP 5: Call AI summary generator
+        ai_summary = self._generate_ai_summary([{"related_ops_learning": processed_learnings}])
+        return Response({"ai_structured_summary": ai_summary}, status=drf_status.HTTP_200_OK)
 
-        
-        structured = self._join_events_and_learning(all_events, ops_learning)
-        ai_summary = self._generate_ai_summary(structured)
+   
+    def _fetch_events_by_appeals(self, appeal_codes: set[str]) -> List[Dict]:
+        """Return events that are linked to the appeal codes in the ops learning."""
+        api_url = 'https://goadmin.ifrc.org/api/v2/event/'
+        matched_events = []
 
-        
-        response_payload = {
-            'ai_structured_summary': ai_summary
-        }
+        for code in appeal_codes:
+            params = {'appeals__code': code}
+            response = self._make_api_request(api_url, params, f"event for appeal {code}")
+            matched_events.extend(response.get("results", []))
 
-        if fallback_note:
-            response_payload['fallback_note'] = fallback_note
+        return matched_events
 
-        if not ops_learning:
-            response_payload['fallback_note'] = (
-                "No operational learnings have been recorded in the system for this context yet. "
-                "You're welcome to check the [Ops Learning dashboard](https://go.ifrc.org/deployments/ops-learning) "
-                "and the [IFRC’s evaluations database](https://www.ifrc.org/evaluations) to learn more."
-            )
-
-        return Response(response_payload, status=drf_status.HTTP_200_OK)
 
     def _validate_request_params(self, request) -> Optional[Response]:
         """Validate required query parameters."""
@@ -1398,29 +1406,32 @@ class IFRCEventListView(views.APIView):
         
         return self._make_api_request(api_url, params, 'events')
     
-    def _fetch_ops_learning(self, country_id: int, disaster_type_id: int) -> Dict[str, Any]:
-        """Fetch operational learning data from IFRC API and filter by country + dtype."""
-        api_url = 'https://goadmin.ifrc.org/api/v2/ops-learning/'
+    def _fetch_ops_learning(
+        self,
+        country_id: int,
+        disaster_type_id: Optional[int],
+        max_results: int = 6
+    ) -> List[Dict]:
+        """
+        Fetch up to max_results validated learnings for (country + optional dtype),
+        letting the server do the heavy lifting.
+        """
         params = {
-            'is_validated': 'true',
-            'limit': 100
+            "is_validated": "true",
+            "limit": max_results,
+            "appeal_code__country": country_id,
         }
+        if disaster_type_id is not None:
+            params["appeal_code__dtype"] = disaster_type_id
 
-        ops_learning_data = self._make_api_request(api_url, params, 'ops learning')
+        resp = self._make_api_request(
+            "https://goadmin.ifrc.org/api/v2/ops-learning/",
+            params,
+            "ops learning"
+        ).get("results", [])
 
-        # 🔍 Filter locally
-        filtered = [
-            item for item in ops_learning_data.get('results', [])
-            if (
-                (item.get('appeal', {}).get('country') == country_id)
-                or
-                (item.get('appeal', {}).get('event_details', {}).get('dtype') == disaster_type_id)
-            )
-        ]
-
-        print(f"=== DEBUG: Filtered ops learning count: {len(filtered)} ===")
-
-        return {'results': filtered}
+        print(f"=== DEBUG: {len(resp)} learnings fetched from API (country={country_id}, dtype={disaster_type_id}) ===")
+        return resp
 
     def _fetch_events_by_country_only(self, country_id: int) -> Dict[str, Any]:
         """Fetch events by country only, without disaster type filtering."""
@@ -1490,7 +1501,6 @@ class IFRCEventListView(views.APIView):
         return learning_by_appeal
     
     def _create_learning_entry(self, learning: Dict) -> Dict:
-        """Create structured learning entry."""
         return {
             'id': learning.get('id'),
             'learning_text': learning.get('learning_validated_en', learning.get('learning_en')),
@@ -1500,8 +1510,11 @@ class IFRCEventListView(views.APIView):
             'organization_validated': learning.get('organization_validated'),
             'type_validated': learning.get('type_validated'),
             'created_at': learning.get('created_at'),
-            'modified_at': learning.get('modified_at')
+            'modified_at': learning.get('modified_at'),
+            'appeal_code': learning.get('appeal_code'),
+            'appeal_name': learning.get('appeal', {}).get('name'),    # ← new
         }
+
     
     def _create_event_structure(self, event: Dict) -> Dict:
         """Create structured event data."""
@@ -1628,48 +1641,39 @@ class IFRCEventListView(views.APIView):
         system_message = {
             "role": "system",
             "content": (
-                "You MUST return a JSON array of up to 6 objects. Each object **must** have exactly these three keys:\n\n"
-                "  • title   : a 3–5 word bold headline\n"
-                "  • insight : three or four full sentences summarizing the finding\n"
-                "  • metadata: a JSON object with:\n"
-                "      • eventID: list of related event IDs (e.g. [10123])\n"
-                "      • operational_learning_source: list of human-readable source titles (e.g. [\"Nigeria Flood 2023\"])\n\n"
-                "**Do not** omit any field. **Do not** wrap your JSON in markdown.\n\n"
-                "Example:\n"
-                "[\n"
-                "  {\n"
-                "    \"title\": \"Early Alerts Save Lives\",\n"
-                "    \"insight\": \"Issuing timely alerts before disasters reduced casualties and improved coordination in affected areas.\",\n"
-                "    \"metadata\": {\n"
-                "      \"eventID\": [10123, 10145],\n"
-                "      \"operational_learning_source\": [\"Nigeria Flood 2023\", \"Mali Epidemic 2024\"]\n"
-                "    }\n"
-                "  }\n"
-                "]"
+                "Return a JSON array of up to 6 objects. Each object must have exactly these keys:\n"
+                "- title (string)\n"
+                "- insight (string)\n"
+                "- source_note (string): either "
+                "'This insight was built off similar disasters from the same country.' or "
+                "'This insight was built off other disasters from the same country.'\n"
+                "- metadata (object):\n"
+                "    • operational_learning_source: list of appeal codes or IDs\n\n"
+                "Return ONLY the raw JSON array, no markdown."
             )
         }
 
+        # flatten your learnings into one list
+        all_learnings = [
+            l for e in structured_data for l in e.get('related_ops_learning', [])
+        ][:20]
 
-        events_block = "\n".join(
-            f"- ID {e['event_id']} | {e['event_name']} | {e['country']['name']} | {e['start_date']}:\n  {e['description']}"
-            for e in structured_data if e['event_id']
-        )
+        def truncate(s, n=500): 
+            return s if len(s) <= n else s[:n] + "..."
 
         learnings_block = "\n".join(
-            f"- ID {l['id']} | {l['document_name']}:\n  {l['learning_text']}"
-            for e in structured_data
-            for l in e.get("related_ops_learning", [])
+            f"- ID {l['id']} | {l['document_name']} ({l['source_note']}):\n  {truncate(l['learning_text'])}"
+            for l in all_learnings
         )
-
 
         user_message = {
             "role": "user",
             "content": (
-                "Here are the events:\n" + events_block +
-                "\n\nHere are the learnings:\n" + learnings_block +
-                "\n\nPlease synthesize up to 6 **actionable insights**, "
-                "each with **title**, **insight** and **sources** as specified above. "
-                "Return **only** the JSON array."
+                "Here are the learnings:\n" + learnings_block +
+                "\n\nPlease synthesize up to 6 actionable insights, "
+                "each with title, insight, source_note, metadata.operational_learning_source. "
+                "Make them up to 5 sentences long and include the country name. "
+                "Return only JSON."
             )
         }
 
@@ -1680,34 +1684,49 @@ class IFRCEventListView(views.APIView):
         ).choices[0].message.content
 
         try:
-            data = json.loads(raw)
-            clean = []
-            for obj in data:
-                if (
-                    obj.get("title") and 
-                    obj.get("insight") and 
-                    isinstance(obj.get("metadata"), dict)
-                ):
-                    clean.append({
-                        "title": obj["title"],
-                        "insight": obj["insight"],
-                        "metadata": {
-                            "eventID": obj["metadata"].get("eventID", []),
-                            "operational_learning_source": obj["metadata"].get("operational_learning_source", [])
-                        }
-                    })
-            if clean:
-                return clean
-        except Exception:
-            pass
+            parsed = json.loads(raw)
+            out = []
+            for obj in parsed:
+                if not (obj.get("title") and obj.get("insight") and isinstance(obj.get("metadata"), dict)):
+                    continue
 
+                returned = obj["metadata"].get("operational_learning_source", [])
+                sources = []
 
+                for rid in returned:
+                    # try matching by numeric ID
+                    match = next((e for e in all_learnings if str(e['id']) == str(rid)), None)
+                    # or by code
+                    if match is None:
+                        match = next((e for e in all_learnings if e['appeal_code'] == str(rid)), None)
+                    if match:
+                        sources.append({
+                            "id":   match['id'],
+                            "code": match['appeal_code'],
+                            "name": match['appeal_name'],
+                        })
+
+                out.append({
+                    "title":       obj["title"],
+                    "insight":     obj["insight"],
+                    "source_note": obj.get("source_note", ""),
+                    "metadata": {
+                        "operational_learning_source": sources
+                    }
+                })
+
+            if out:
+                return out
+
+        except Exception as e:
+            print("AI parsing error:", e, raw)
+
+        # fallback
         return [{
             "title": "ParsingError",
             "insight": raw.strip(),
-            "metadata": {
-                "eventID": [],
-                "operational_learning_source": []
-            }
+            "metadata": {"operational_learning_source": []}
         }]
+
+
 
