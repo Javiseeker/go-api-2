@@ -112,6 +112,7 @@ from .serializers import (
     PerAssessmentSerializer,
     PerDocumentUploadSerializer,
     PerDrefLLMSummarySerializer,
+    PerDrefSituationalOverviewSerializer,
     PerFileInputSerializer,
     PerFileSerializer,
     PerFormDataSerializer,
@@ -126,8 +127,7 @@ from .serializers import (
     UserPerCountrySerializer,
 )
 import json
-from per.ops_learning_summary2 import OpsLearningSummaryTask
-from per.ops_learning_summary2 import AzureOpenAiChat
+from per.ops_learning_summary3 import DrefSummaryTask
 class PERDocsFilter(filters.FilterSet):
     id = filters.NumberFilter(field_name="id", lookup_expr="exact")
 
@@ -291,83 +291,6 @@ class PerOverviewViewSet(viewsets.ModelViewSet):
         queryset = Overview.objects.select_related("country", "user")
         return self.get_filtered_queryset(self.request, queryset, dispatch=0)
 
-class PerDrefStatusView(APIView):
-    def get(self, request):
-        event_id = request.query_params.get("id", None)
-
-        if not event_id:
-            return Response({"error": "Event ID is required"}, status=drf_status.HTTP_400_BAD_REQUEST)
-        
-        try:
-            # Convert to int for validation
-            event_id = int(event_id)
-        except ValueError:
-            return Response({"error": "Event ID must be a valid integer"}, status=drf_status.HTTP_400_BAD_REQUEST)
-        
-        try:
-            # Step 1: Check if the event exists using EventAPIClient
-            event_client = EventAPIClient()
-            event = event_client.get_event_detail(event_id)
-            if not event:
-                return Response({"error": "Event not found"}, status=drf_status.HTTP_404_NOT_FOUND)
-            
-            field_reports = event.get("field_reports", [])
-            
-            if len(field_reports) == 0:
-                return Response({
-                    "error": "Field Reports not found",
-                    "event_id": event_id,
-                    "event_name": event.get("name")
-                }, status=drf_status.HTTP_404_NOT_FOUND)
-            
-            print(f"Found {len(field_reports)} field reports for event {event_id}")
-            
-            # Step 3: Extract field report IDs from the results array
-            field_report_ids = [fr['id'] for fr in field_reports]
-            print(f"Field report IDs: {field_report_ids}")
-            
-            # Step 4: Filter DREFs using the list of field report IDs
-            filters = DREFFilters(field_report_ids=field_report_ids)
-            matching_drefs = dref_manager.get_data("basic", filters)
-            
-            # Alternative approach using helper method:
-            # matching_drefs = dref_manager.get_drefs_by_field_report_ids("basic", field_report_ids)
-            
-            print(f"Matching DREF records found: {len(matching_drefs)}")
-            print(f"Event ID: {event_id}, Event Name: {event.get('name')}")
-
-            if len(matching_drefs) == 0:
-                return Response({
-                    "error": "No DREF found for the given event ID",
-                    "event_id": event_id,
-                    "event_name": event.get("name"),
-                    "field_reports_count": len(field_reports),
-                    "field_report_ids": field_report_ids
-                }, status=drf_status.HTTP_404_NOT_FOUND)
-            
-            # Step 5: Extract DREF information
-            dref = matching_drefs[0]
-            type_of_dref_display = dref.type_of_dref_display
-            type_of_onset_display = dref.type_of_onset_display
-
-            print(f"Type of DREF: {type_of_dref_display}, Type of Onset: {type_of_onset_display}")
-
-            # Step 6: Return comprehensive response
-            response_data = {
-                "dref_id": matching_drefs[0].id,
-                "dref_count": len(matching_drefs),
-                "type_of_dref_display": type_of_dref_display,
-                "type_of_onset_display": type_of_onset_display
-            }
-            
-            return Response(response_data, status=drf_status.HTTP_200_OK)
-            
-        except requests.RequestException as e:
-            return Response({"error": f"API request failed: {str(e)}"}, status=drf_status.HTTP_500_INTERNAL_SERVER_ERROR)
-        except Exception as e:
-            print(f"Unexpected error in PerDrefStatusView: {str(e)}")
-            return Response({"error": f"Internal server error: {str(e)}"}, status=drf_status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
 class PerDrefLLMSummaryView(APIView):
     """
     API view for generating DREF LLM summaries.
@@ -460,9 +383,6 @@ class PerDrefLLMSummaryView(APIView):
                 first_update = operational_updates[0]
                 op_update_number = getattr(first_update, 'operational_update_number', 1)
 
-
-            from per.ops_learning_summary3 import DrefSummaryTask
-
             summaries = DrefSummaryTask.generate_dref_summaries(dref_dict)
             
             # Extract sectors data with debugging
@@ -494,6 +414,120 @@ class PerDrefLLMSummaryView(APIView):
             logger.error(f"Error in PerDrefLLMSummaryView: {e}", exc_info=True)
             return Response({
                 "error": "Internal server error occurred while generating DREF summaries",
+                "details": str(e)
+            }, status=drf_status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class PerDrefSituationalOverviewView(APIView):
+    """
+    API view for generating DREF situational overview.
+    Returns a 5-line paragraph summarizing the event situation and key changes.
+    """
+    
+    def get(self, request):
+        event_id = request.query_params.get("id", None)
+
+        if not event_id:
+            return Response({"error": "Event ID is required"}, status=drf_status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            event_id = int(event_id)
+        except ValueError:
+            return Response({"error": "Event ID must be a valid integer"}, status=drf_status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Step 1: Check if the event exists using EventAPIClient
+            event = EventAPIClient().get_event_detail(event_id)
+            if not event:
+                return Response({"error": "Event not found"}, status=drf_status.HTTP_404_NOT_FOUND)
+            
+            field_reports = event.get("field_reports", [])
+            if not field_reports:
+                return Response({
+                    "error": "Field Reports not found",
+                    "event_id": event_id,
+                    "event_name": event.get("name")
+                }, status=drf_status.HTTP_404_NOT_FOUND)
+            
+            logger.info(f"Found {len(field_reports)} field reports for event {event_id}")
+            
+            # Step 2: Extract field report IDs and find linked DREF
+            field_report_ids = [fr['id'] for fr in field_reports]
+            dref_data = dref_manager.get_data("basic", DREFFilters(field_report_ids=field_report_ids))
+
+            if not dref_data:
+                return Response({
+                    "error": "No DREF found for the given event ID",
+                    "event_id": event_id,
+                    "event_name": event.get("name"),
+                    "field_reports_count": len(field_reports),
+                    "field_report_ids": field_report_ids
+                }, status=drf_status.HTTP_404_NOT_FOUND)
+            
+            dref_data = dref_data[0]
+
+            # Step 3: Get latest DREF version using existing utility method
+            # This method automatically handles fallback to basic DREF if no operational updates exist
+            latest_dref_version = dref_manager.get_latest_dref_version(dref_data)
+            
+            # Step 4: Prepare data for LLM generation - extract all needed fields
+            latest_update_dict = {
+                'event_description': (getattr(latest_dref_version, 'event_description', '') or 
+                                   getattr(latest_dref_version, 'description', '') or 
+                                   getattr(latest_dref_version, 'summary', '')),
+                'event_scope': (getattr(latest_dref_version, 'event_scope', '') or 
+                              getattr(latest_dref_version, 'scope_and_scale', '')),
+                'operation_objective': getattr(latest_dref_version, 'operation_objective', ''),
+                'response_strategy': getattr(latest_dref_version, 'response_strategy', ''),
+                'title': getattr(latest_dref_version, 'title', ''),
+                'operational_update_number': getattr(latest_dref_version, 'operational_update_number', 0),
+                'country_details': {
+                    'name': latest_dref_version.country_details.name if latest_dref_version.country_details else None,
+                    'iso': latest_dref_version.country_details.iso if latest_dref_version.country_details else None
+                },
+                'disaster_type_details': {
+                    'name': latest_dref_version.disaster_type_details.name if latest_dref_version.disaster_type_details else None
+                },
+                'date_of_approval': getattr(latest_dref_version, 'date_of_approval', None),
+            }
+
+            # Step 5: Generate situational overview
+            situational_overview = DrefSummaryTask.generate_situational_overview(latest_update_dict)
+            
+            if not situational_overview:
+                return Response({
+                    "error": "Failed to generate situational overview",
+                    "dref_id": dref_data.id,
+                    "event_id": event_id
+                }, status=drf_status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            # Step 6: Prepare situational overview focused metadata
+            response_data = {
+                "situational_overview": situational_overview,
+                "metadata": {
+                    # Event-focused information (primary for situational overview)
+                    "event_id": event_id,
+                    "event_name": event.get("name"),
+                    "disaster_type": latest_update_dict['disaster_type_details']['name'],
+                    "country": latest_update_dict['country_details']['name'],
+                    
+                    # Operational update context (key for understanding situation changes)
+                    "latest_update_number": latest_update_dict.get('operational_update_number'),
+                    "total_operational_updates": len(getattr(dref_data, 'operational_update_details', [])),
+                    
+                    # Basic DREF information (minimal, for reference)
+                    "dref_id": dref_data.id,
+                    "dref_title": getattr(dref_data, 'title', None),
+                    "dref_date": getattr(dref_data, 'date_of_approval', None)
+                }
+            }
+            
+            serializer = PerDrefSituationalOverviewSerializer(response_data)
+            return Response(serializer.data, status=drf_status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Error in PerDrefSituationalOverviewView: {e}", exc_info=True)
+            return Response({
+                "error": "Internal server error occurred while generating situational overview",
                 "details": str(e)
             }, status=drf_status.HTTP_500_INTERNAL_SERVER_ERROR)
 

@@ -3,7 +3,6 @@
   "sectors": [
     {
       "title": "",
-      "actions_taken_summary": "description",
       "needs_summary": "description",
       "future_actions": [
         {
@@ -23,7 +22,8 @@
           ],
           "budget": 0,
           "description": "",
-          "people_targeted_total": 0
+          "people_targeted_total": 0,
+          "needs_addressed": ""
         }
       ]
     }
