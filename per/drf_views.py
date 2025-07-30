@@ -5,6 +5,10 @@ import requests
 import pytz
 import httpx
 
+import pandas as pd
+from tempfile import NamedTemporaryFile
+from per.blob_upload import upload_to_blob
+
 # Django imports
 from django.conf import settings
 from django.db import transaction
@@ -1283,14 +1287,15 @@ class PerDocumentUploadViewSet(viewsets.ModelViewSet):
 
 class IFRCEventListView(views.APIView):
     """API view for fetching and enriching IFRC event data with operational learning insights."""
-    DISASTER_TYPE_EVENT_THRESHOLD = 3
+    DISASTER_TYPE_EVENT_THRESHOLD = 1
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.azure_client = AzureServiceClient()
 
     def get(self, request) -> Response:
-        """Handle GET requests for IFRC event data with fallback logic and a single AI summary field."""
-        # validate
+        """Handle GET requests for IFRC event data with fallback logic and AI-generated insights."""
+        
+        
         validation_response = self._validate_request_params(request)
         if validation_response:
             return validation_response
@@ -1298,33 +1303,55 @@ class IFRCEventListView(views.APIView):
         country_id = int(request.query_params['country'])
         disaster_type_id = int(request.query_params['disaster_type'])
 
-        # 1) fetch events by dtype+country, fallback to country-only if under threshold
+        
         disaster_events = self._fetch_events(country_id, disaster_type_id).get('results', [])
+        all_events = disaster_events
         fallback_note = None
+
+        
         if len(disaster_events) < self.DISASTER_TYPE_EVENT_THRESHOLD:
             country_events = self._fetch_events_by_country_only(country_id).get('results', [])
-            # merge unique
             merged = {e['id']: e for e in disaster_events}
             for e in country_events:
                 merged.setdefault(e['id'], e)
             all_events = list(merged.values())
-            fallback_note = f"Only {len(disaster_events)} disaster-type events found; added country-level results."
-        else:
-            all_events = disaster_events
 
-        # 2) fetch ops learning
+            fallback_note = f"{len(disaster_events)} disaster-type events found; added country-level results."
+
+        
+        if not all_events:
+            return Response(
+                {
+                    "detail": (
+                        "No IFRC events found for the provided country and disaster type.\n"
+                        "Please verify that the IDs are correct or try a different combination."
+                    ),
+                    "ai_structured_summary": []
+                },
+                status=drf_status.HTTP_404_NOT_FOUND
+            )
+
+        
         ops_learning = self._fetch_ops_learning(country_id, disaster_type_id).get('results', [])
 
-        # 3) join + generate
+        
         structured = self._join_events_and_learning(all_events, ops_learning)
         ai_summary = self._generate_ai_summary(structured)
 
-        # 4) return single field
+        
         response_payload = {
             'ai_structured_summary': ai_summary
         }
+
         if fallback_note:
             response_payload['fallback_note'] = fallback_note
+
+        if not ops_learning:
+            response_payload['fallback_note'] = (
+                "No operational learnings have been recorded in the system for this context yet. "
+                "You're welcome to check the [Ops Learning dashboard](https://go.ifrc.org/deployments/ops-learning) "
+                "and the [IFRC’s evaluations database](https://www.ifrc.org/evaluations) to learn more."
+            )
 
         return Response(response_payload, status=drf_status.HTTP_200_OK)
 
@@ -1384,8 +1411,11 @@ class IFRCEventListView(views.APIView):
         # 🔍 Filter locally
         filtered = [
             item for item in ops_learning_data.get('results', [])
-            if item.get('appeal', {}).get('country') == country_id
-            and item.get('appeal', {}).get('event_details', {}).get('dtype') == disaster_type_id
+            if (
+                (item.get('appeal', {}).get('country') == country_id)
+                or
+                (item.get('appeal', {}).get('event_details', {}).get('dtype') == disaster_type_id)
+            )
         ]
 
         print(f"=== DEBUG: Filtered ops learning count: {len(filtered)} ===")
@@ -1598,29 +1628,39 @@ class IFRCEventListView(views.APIView):
         system_message = {
             "role": "system",
             "content": (
-                "You MUST return a JSON array of up to 6 objects.  "
-                "Each object **must** have exactly these three keys:\n\n"
+                "You MUST return a JSON array of up to 6 objects. Each object **must** have exactly these three keys:\n\n"
                 "  • title   : a 3–5 word bold headline\n"
-                "  • insight : one or two full sentences summarizing the finding\n"
-                "  • sources : a JSON array of the IDs that back up this finding\n\n"
-                "**Do not** omit any field. **Do not** wrap your JSON in markdown.  "
+                "  • insight : three or four full sentences summarizing the finding\n"
+                "  • metadata: a JSON object with:\n"
+                "      • eventID: list of related event IDs (e.g. [10123])\n"
+                "      • operational_learning_source: list of human-readable source titles (e.g. [\"Nigeria Flood 2023\"])\n\n"
+                "**Do not** omit any field. **Do not** wrap your JSON in markdown.\n\n"
                 "Example:\n"
                 "[\n"
-                "  {\"title\":\"Early Alerts Save Lives\",\n"
-                "   \"insight\":\"Issuing timely alerts ...\",\n"
-                "   \"sources\":[\"PAN: Flood - 2023-08\",\"PAN: Flood - 10-2024\"]\n"
-                "  },\n"
-                "  …\n"
+                "  {\n"
+                "    \"title\": \"Early Alerts Save Lives\",\n"
+                "    \"insight\": \"Issuing timely alerts before disasters reduced casualties and improved coordination in affected areas.\",\n"
+                "    \"metadata\": {\n"
+                "      \"eventID\": [10123, 10145],\n"
+                "      \"operational_learning_source\": [\"Nigeria Flood 2023\", \"Mali Epidemic 2024\"]\n"
+                "    }\n"
+                "  }\n"
                 "]"
             )
         }
 
-        events_block = "\n".join(f"- {e['summary']}: {e['description']}" for e in structured_data)
+
+        events_block = "\n".join(
+            f"- ID {e['event_id']} | {e['event_name']} | {e['country']['name']} | {e['start_date']}:\n  {e['description']}"
+            for e in structured_data if e['event_id']
+        )
+
         learnings_block = "\n".join(
-            f"- {l['id']}: {l['learning_text']}"
+            f"- ID {l['id']} | {l['document_name']}:\n  {l['learning_text']}"
             for e in structured_data
             for l in e.get("related_ops_learning", [])
         )
+
 
         user_message = {
             "role": "user",
@@ -1641,19 +1681,33 @@ class IFRCEventListView(views.APIView):
 
         try:
             data = json.loads(raw)
-            # sanity‐check that every entry has non‐empty fields
             clean = []
             for obj in data:
-                if obj.get("title") and obj.get("insight") and obj.get("sources"):
-                    clean.append(obj)
+                if (
+                    obj.get("title") and 
+                    obj.get("insight") and 
+                    isinstance(obj.get("metadata"), dict)
+                ):
+                    clean.append({
+                        "title": obj["title"],
+                        "insight": obj["insight"],
+                        "metadata": {
+                            "eventID": obj["metadata"].get("eventID", []),
+                            "operational_learning_source": obj["metadata"].get("operational_learning_source", [])
+                        }
+                    })
             if clean:
                 return clean
         except Exception:
             pass
 
-        # fallback
+
         return [{
-            "title":   "ParsingError",
+            "title": "ParsingError",
             "insight": raw.strip(),
-            "sources": []
+            "metadata": {
+                "eventID": [],
+                "operational_learning_source": []
+            }
         }]
+
