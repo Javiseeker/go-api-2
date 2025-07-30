@@ -1638,51 +1638,61 @@ class IFRCEventListView(views.APIView):
         if not self.azure_client.openai_client:
             return []
 
+        # 1) Build flat list of learnings
+        all_learnings = [l for e in structured_data for l in e.get('related_ops_learning', [])][:20]
+
+        def truncate(text: str, max_chars: int = 500) -> str:
+            return text if len(text) <= max_chars else text[:max_chars] + "..."
+
+        # 2) System prompt with an explicit example
         system_message = {
             "role": "system",
             "content": (
-                "Return a JSON array of up to 6 objects. Each object must have exactly these keys:\n"
-                "- title (string)\n"
-                "- insight (string)\n"
-                "- source_note (string): either "
-                "'This insight was built off similar disasters from the same country.' or "
-                "'This insight was built off other disasters from the same country.'\n"
-                "- metadata (object):\n"
-                "    • operational_learning_source: list of appeal codes or IDs\n\n"
-                "Return ONLY the raw JSON array, no markdown."
+                "You MUST return a JSON array of up to 6 objects. Each insight **must** merge between **one** and **three** distinct learnings inclusive. The same learning can be used more than once for a different insight if useful "
+                "and list **all** sources in `metadata.operational_learning_source` as objects with `id`, `code`, `name`.\n\n"
+                "Example of correct output:\n\n"
+                "[\n"
+                "  {\n"
+                "    \"title\": \"Customizing Data Tools\",\n"
+                "    \"insight\": \"...\",\n"
+                "    \"source_note\": \"This insight was built off other disasters from the same country.\",\n"
+                "    \"metadata\": {\n"
+                "      \"operational_learning_source\": [\n"
+                "        {\"id\": 5366, \"code\": \"MDRPY021\", \"name\": \"Paraguay - Dengue 2020\"},\n"
+                "        {\"id\": 1424, \"code\": \"MDRCU005\", \"name\": \"Cuba - Tornado\"}\n"
+                "      ]\n"
+                "    }\n"
+                "  }\n"
+                "]\n\n"
+                "Return ONLY the JSON array (no markdown)."
             )
         }
 
-        # flatten your learnings into one list
-        all_learnings = [
-            l for e in structured_data for l in e.get('related_ops_learning', [])
-        ][:20]
-
-        def truncate(s, n=500): 
-            return s if len(s) <= n else s[:n] + "..."
-
+        # 3) Build the user-visible list of learnings
         learnings_block = "\n".join(
-            f"- ID {l['id']} | {l['document_name']} ({l['source_note']}):\n  {truncate(l['learning_text'])}"
+            f"- ID {l['id']} | Code {l['appeal_code']} | Name {l['appeal_name']} | {l['document_name']}:\n"
+            f"  {truncate(l['learning_text'])}"
             for l in all_learnings
         )
-
         user_message = {
             "role": "user",
             "content": (
                 "Here are the learnings:\n" + learnings_block +
-                "\n\nPlease synthesize up to 6 actionable insights, "
-                "each with title, insight, source_note, metadata.operational_learning_source. "
-                "Make them up to 5 sentences long and include the country name. "
-                "Return only JSON."
+                "\n\nPlease synthesize up to 6 actionable insights by combining any learnings that share a theme. "
+                "Each insight must draw on at least two of the above.  "
+                "In `metadata.operational_learning_source` list every source you used (with its `id`, `code`, and `name`).  "
+                "Make each insight no more than 5 sentences, include the country name, and return only valid JSON."
             )
         }
 
+        # 4) Call OpenAI
         raw = self.azure_client.openai_client.chat.completions.create(
             model=settings.AZURE_OPENAI_DEPLOYMENT_NAME,
             messages=[system_message, user_message],
             temperature=0.7
         ).choices[0].message.content
 
+        # 5) Parse & enforce fallback for sources
         try:
             parsed = json.loads(raw)
             out = []
@@ -1690,29 +1700,38 @@ class IFRCEventListView(views.APIView):
                 if not (obj.get("title") and obj.get("insight") and isinstance(obj.get("metadata"), dict)):
                     continue
 
-                returned = obj["metadata"].get("operational_learning_source", [])
-                sources = []
+                srcs = []
+                for entry in obj["metadata"].get("operational_learning_source", []):
+                    # model should have given us objects already; accept them if so
+                    if isinstance(entry, dict) and all(k in entry for k in ("id", "code", "name")):
+                        srcs.append(entry)
+                    else:
+                        # fallback: match by id or code
+                        rid = entry
+                        match = next((l for l in all_learnings if str(l["id"]) == str(rid)), None)
+                        if match is None:
+                            match = next((l for l in all_learnings if l["appeal_code"] == str(rid)), None)
+                        if match:
+                            srcs.append({
+                                "id": match["id"],
+                                "code": match["appeal_code"],
+                                "name": match["appeal_name"],
+                            })
 
-                for rid in returned:
-                    # try matching by numeric ID
-                    match = next((e for e in all_learnings if str(e['id']) == str(rid)), None)
-                    # or by code
-                    if match is None:
-                        match = next((e for e in all_learnings if e['appeal_code'] == str(rid)), None)
-                    if match:
-                        sources.append({
-                            "id":   match['id'],
-                            "code": match['appeal_code'],
-                            "name": match['appeal_name'],
+                # if LLM forgot to list sources, at least include first two
+                if not srcs and len(all_learnings) >= 2:
+                    for l in all_learnings[:2]:
+                        srcs.append({
+                            "id": l["id"],
+                            "code": l["appeal_code"],
+                            "name": l["appeal_name"],
                         })
 
                 out.append({
-                    "title":       obj["title"],
-                    "insight":     obj["insight"],
+                    "title": obj["title"],
+                    "insight": obj["insight"],
                     "source_note": obj.get("source_note", ""),
-                    "metadata": {
-                        "operational_learning_source": sources
-                    }
+                    "metadata": {"operational_learning_source": srcs}
                 })
 
             if out:
@@ -1721,12 +1740,10 @@ class IFRCEventListView(views.APIView):
         except Exception as e:
             print("AI parsing error:", e, raw)
 
-        # fallback
+        # 6) Fallback if parsing fails entirely
         return [{
             "title": "ParsingError",
             "insight": raw.strip(),
             "metadata": {"operational_learning_source": []}
         }]
-
-
 
