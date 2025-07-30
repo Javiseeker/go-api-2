@@ -1323,6 +1323,7 @@ class PerDrefLLMSummaryMetadataSerializer(serializers.Serializer):
     """Serializer for DREF metadata"""
     dref_id = serializers.IntegerField(required=False, allow_null=True)
     dref_title = serializers.CharField(required=False, allow_blank=True)
+    dref_appeal_code = serializers.CharField(required=False, allow_blank=True)
     dref_date = serializers.DateField(required=False, allow_null=True)
     dref_created_at = serializers.DateTimeField(required=False, allow_null=True)
     dref_budget_file = serializers.CharField(required=False, allow_blank=True)
@@ -1361,6 +1362,7 @@ class PerDrefSituationalOverviewMetadataSerializer(serializers.Serializer):
     # Basic DREF information (minimal, for reference)
     dref_id = serializers.IntegerField(required=False, allow_null=True)
     dref_title = serializers.CharField(required=False, allow_blank=True)
+    dref_appeal_code = serializers.CharField(required=False, allow_blank=True)
     dref_date = serializers.DateField(required=False, allow_null=True)
 
 
