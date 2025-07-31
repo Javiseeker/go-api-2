@@ -141,7 +141,7 @@ class DrefSummaryTask:
         "The affected population faces critical water and sanitation challenges with 15,000 people lacking access to safe drinking water. Emergency shelter needs are urgent as 3,000 families remain displaced in overcrowded temporary accommodations."
     )
 
-    needs_addressing_prompt = (
+    intervention_summary_prompt = (
         "\nExplain how this future action addresses the identified needs:\n"
         "Write a concise sentence focusing on the specific solution and measurable outcomes, not repeating the problem statement.\n\n"
         "Requirements:\n"
@@ -250,7 +250,7 @@ class DrefSummaryTask:
             try:
                 # Get title_display (use first available title_display from any item in this sector)
                 title_display = sector_title
-                for item_list in [sector_info.get('actions', []), sector_info.get('needs', []), sector_info.get('planned_interventions', [])]:
+                for item_list in [sector_info.get('needs', []), sector_info.get('planned_interventions', [])]:
                     for item in item_list:
                         if hasattr(item, 'title_display'):
                             title_display = getattr(item, 'title_display', sector_title)
@@ -283,21 +283,28 @@ class DrefSummaryTask:
                 if sector_info.get('planned_interventions'):
                     future_actions = cls.process_planned_interventions(sector_info['planned_interventions'])
                     
-                    # Generate needs_addressed for each future action if needs_summary exists
+                    # Generate intervention_summary for each future action if needs_summary exists
                     if sector_summary["needs_summary"]:
                         for action in future_actions:
-                            needs_addressed = cls.generate_needs_addressed(
+                            intervention_summary = cls.generate_intervention_summary(
                                 sector_summary["needs_summary"], 
                                 action
                             )
-                            if needs_addressed:
-                                action["needs_addressed"] = needs_addressed
+                            if intervention_summary:
+                                action["intervention_summary"] = intervention_summary
                             else:
-                                print(f"NEEDS_ADDRESSED: {sector_title} - FAILED Empty/None for action")
+                                print(f"INTERVENTION_SUMMARY: {sector_title} - FAILED Empty/None for action")
                     
                     sector_summary["future_actions"] = future_actions
                 
-                sectors.append(sector_summary)
+                # Only include sectors that have meaningful content
+                has_needs_summary = bool(sector_summary["needs_summary"].strip())
+                has_future_actions = bool(sector_summary["future_actions"])
+                
+                if has_needs_summary or has_future_actions:
+                    sectors.append(sector_summary)
+                else:
+                    print(f"SECTOR_FILTERING: Skipping empty sector '{sector_title}' - no needs summary or future actions")
                 
             except Exception as e:
                 logger.error(f"Error processing sector {sector_title}: {e}")
@@ -320,7 +327,7 @@ class DrefSummaryTask:
             else:
                 sector_title = intervention.get('title', 'unknown')
             if sector_title not in sector_data:
-                sector_data[sector_title] = {'actions': [], 'needs': [], 'planned_interventions': []}
+                sector_data[sector_title] = {'needs': [], 'planned_interventions': []}
             sector_data[sector_title]['planned_interventions'].append(intervention)
         
         # STEP 2: Match needs_identified to sectors defined by planned_interventions
@@ -348,18 +355,6 @@ class DrefSummaryTask:
                 if not matched:
                     print(f"NEEDS_MATCHING: NO MATCH '{sector_title}' - skipping need {i+1}")
         
-        # STEP 3: Match national society actions to sectors
-        actions = dref_data.get('national_society_actions', [])
-        for i, action in enumerate(actions):
-            # Handle both dict and dataclass objects
-            if hasattr(action, 'title'):
-                sector_title = getattr(action, 'title', 'unknown')
-            else:
-                sector_title = action.get('title', 'unknown')
-            
-            # Only add actions if the sector was defined by planned_interventions
-            if sector_title in sector_data:
-                sector_data[sector_title]['actions'].append(action)
         
         return sector_data
     
@@ -415,8 +410,8 @@ class DrefSummaryTask:
             return "Critical needs have been identified requiring immediate humanitarian response."
     
     @classmethod
-    def generate_needs_addressed(cls, needs_summary: str, future_action: Dict[str, Any]) -> Optional[str]:
-        """Generate needs addressed summary for a single future action using LLM"""
+    def generate_intervention_summary(cls, needs_summary: str, future_action: Dict[str, Any]) -> Optional[str]:
+        """Generate intervention summary for a single future action using LLM"""
         if not needs_summary or not future_action:
             return None
         
@@ -432,12 +427,12 @@ class DrefSummaryTask:
             # Enhanced system message with description context but don't show description in user prompt
             enhanced_system_message = f"{cls.system_message} The intervention involves: {description}"
             
-            prompt_content = f"Needs Summary:\n{needs_summary}\n\n{action_text}\n\n{cls.needs_addressing_prompt}"
+            prompt_content = f"Needs Summary:\n{needs_summary}\n\n{action_text}\n\n{cls.intervention_summary_prompt}"
             
             messages = [
                 {"role": "system", "content": enhanced_system_message},
                 {"role": "user", "content": prompt_content},
-                {"role": "assistant", "content": "I understand. I will analyze how this specific action addresses the identified needs according to your specifications."}
+                {"role": "assistant", "content": "I understand. I will analyze this intervention and provide a summary according to your specifications."}
             ]
             
             client = AzureOpenAiChat()
@@ -447,7 +442,7 @@ class DrefSummaryTask:
             return cleaned_response
             
         except Exception as e:
-            logger.error(f"Error generating needs addressed: {e}")
+            logger.error(f"Error generating intervention summary: {e}")
             return None
 
     @classmethod
@@ -585,7 +580,7 @@ class DrefSummaryTask:
                     "indicators": indicators,
                     "budget": budget,
                     "people_targeted_total": people_targeted_total,
-                    "needs_addressed": "",
+                    "intervention_summary": "",
                     "_description": description
                 }
                 

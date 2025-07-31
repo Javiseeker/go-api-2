@@ -1308,7 +1308,7 @@ class PerDrefLLMSummaryFutureActionSerializer(serializers.Serializer):
     budget = serializers.IntegerField(required=False, allow_null=True)
     description = serializers.CharField(required=False, allow_blank=True)
     people_targeted_total = serializers.IntegerField(required=False, allow_null=True)
-    needs_addressed = serializers.CharField(required=False, allow_blank=True)
+    intervention_summary = serializers.CharField(required=False, allow_blank=True)
 
 
 class PerDrefLLMSummarySectorSerializer(serializers.Serializer):
