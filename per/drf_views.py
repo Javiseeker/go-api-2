@@ -1513,6 +1513,7 @@ class IFRCEventListView(views.APIView):
             'modified_at': learning.get('modified_at'),
             'appeal_code': learning.get('appeal_code'),
             'appeal_name': learning.get('appeal', {}).get('name'),    # ← new
+            'event_id': learning.get('appeal', {}).get('event_details', {}).get('id'),
         }
 
     
@@ -1646,27 +1647,30 @@ class IFRCEventListView(views.APIView):
 
         # 2) System prompt with an explicit example
         system_message = {
-            "role": "system",
-            "content": (
-                "You MUST return a JSON array of up to 6 objects. Each insight **must** merge between **one** and **three** distinct learnings inclusive. The same learning can be used more than once for a different insight if useful "
-                "and list **all** sources in `metadata.operational_learning_source` as objects with `id`, `code`, `name`.\n\n"
-                "Example of correct output:\n\n"
-                "[\n"
-                "  {\n"
-                "    \"title\": \"Customizing Data Tools\",\n"
-                "    \"insight\": \"...\",\n"
-                "    \"source_note\": \"This insight was built off other disasters from the same country.\",\n"
-                "    \"metadata\": {\n"
-                "      \"operational_learning_source\": [\n"
-                "        {\"id\": 5366, \"code\": \"MDRPY021\", \"name\": \"Paraguay - Dengue 2020\"},\n"
-                "        {\"id\": 1424, \"code\": \"MDRCU005\", \"name\": \"Cuba - Tornado\"}\n"
-                "      ]\n"
-                "    }\n"
-                "  }\n"
-                "]\n\n"
-                "Return ONLY the JSON array (no markdown)."
-            )
-        }
+                "role": "system",
+                "content": (
+                    "You MUST return a JSON array of up to 6 objects, each with a clear suggestion at the end. Each insight **must** merge "
+                    "between **one** and **three** distinct learnings inclusive and be very detailed. "
+                    "The tone should be to help with a current similar crisis.  "
+                    "For each insight also include a short list of 1-2 clear **recommendations** "
+                    "labeled “recommendations” that follow from the insight.\n\n"
+                    "Example of correct output:\n\n"
+                    "[\n"
+                    "  {\n"
+                    "    \"title\": \"Customizing Data Tools\",\n"
+                    "    \"insight\": \"...\",\n"
+                    "    \"recommendations\": [\n"
+                    "       \"Do X within the first week of response\",\n"
+                    "       \"Train local staff on Y tool\"\n"
+                    "    ],\n"
+                    "    \"source_note\": \"…\",\n"
+                    "    \"metadata\": { … }\n"
+                    "  }\n"
+                    "]\n\n"
+                    "Return ONLY the JSON array (no markdown)."
+                )
+            }
+
 
         # 3) Build the user-visible list of learnings
         learnings_block = "\n".join(
@@ -1679,7 +1683,8 @@ class IFRCEventListView(views.APIView):
             "content": (
                 "Here are the learnings:\n" + learnings_block +
                 "\n\nPlease synthesize up to 6 actionable insights by combining any learnings that share a theme. "
-                "Each insight must draw on at least two of the above.  "
+                "Each insight must draw on at least two of the above. If the insight is based off different disasters, then try to link it to the current disaster. "
+                "Then for each insight, under a key called `recommendations`, list 1–2 clear next steps that an operational team could take.  "
                 "In `metadata.operational_learning_source` list every source you used (with its `id`, `code`, and `name`).  "
                 "Make each insight no more than 5 sentences, include the country name, and return only valid JSON."
             )
@@ -1689,61 +1694,82 @@ class IFRCEventListView(views.APIView):
         raw = self.azure_client.openai_client.chat.completions.create(
             model=settings.AZURE_OPENAI_DEPLOYMENT_NAME,
             messages=[system_message, user_message],
-            temperature=0.7
+            temperature=1.0,
         ).choices[0].message.content
 
-        # 5) Parse & enforce fallback for sources
         try:
-            parsed = json.loads(raw)
-            out = []
-            for obj in parsed:
-                if not (obj.get("title") and obj.get("insight") and isinstance(obj.get("metadata"), dict)):
+            clean = raw.strip()
+            if clean.startswith("```"):
+                clean = clean.strip("```").strip()
+            parsed = json.loads(clean)
+        except Exception as e:
+            print("AI parsing error:", e)
+            print("Raw content was:", raw)
+            return [{
+                "title": "ParsingError",
+                "insight": raw.strip(),
+                "metadata": { "operational_learning_source": [] }
+            }]
+
+        out = []
+        for obj in parsed:
+            title = obj.get("title")
+            insight_text = obj.get("insight")
+            recs = obj.get("recommendations", [])
+            meta = obj.get("metadata", {})
+            if not (title and insight_text and isinstance(meta, dict)):
+                continue
+
+           
+            srcs = []
+            for entry in meta.get("operational_learning_source", []):
+                rid = entry["id"] if isinstance(entry, dict) else entry
+                match = next((l for l in all_learnings if str(l["id"]) == str(rid)), None)
+                if match is None and isinstance(entry, dict):
+                    match = next((l for l in all_learnings if l["appeal_code"] == entry.get("code")), None)
+                if not match:
                     continue
-
-                srcs = []
-                for entry in obj["metadata"].get("operational_learning_source", []):
-                    # model should have given us objects already; accept them if so
-                    if isinstance(entry, dict) and all(k in entry for k in ("id", "code", "name")):
-                        srcs.append(entry)
-                    else:
-                        # fallback: match by id or code
-                        rid = entry
-                        match = next((l for l in all_learnings if str(l["id"]) == str(rid)), None)
-                        if match is None:
-                            match = next((l for l in all_learnings if l["appeal_code"] == str(rid)), None)
-                        if match:
-                            srcs.append({
-                                "id": match["id"],
-                                "code": match["appeal_code"],
-                                "name": match["appeal_name"],
-                            })
-
-                # if LLM forgot to list sources, at least include first two
-                if not srcs and len(all_learnings) >= 2:
-                    for l in all_learnings[:2]:
-                        srcs.append({
-                            "id": l["id"],
-                            "code": l["appeal_code"],
-                            "name": l["appeal_name"],
-                        })
-
-                out.append({
-                    "title": obj["title"],
-                    "insight": obj["insight"],
-                    "source_note": obj.get("source_note", ""),
-                    "metadata": {"operational_learning_source": srcs}
+                srcs.append({
+                    "id":       match["id"],
+                    "code":     match["appeal_code"],
+                    "name":     match["appeal_name"],
+                    "event_id": match.get("event_id"),
+                    "_source_note": match.get("source_note")  # stash original
                 })
 
-            if out:
-                return out
+            # decide whether this insight is "similar" vs "other"
+            notes = [s.pop("_source_note", "") for s in srcs]
+            if any("similar disasters" in n for n in notes):
+                source_note = "This insight was built off similar disasters from the same country."
+            else:
+                source_note = "This insight was built off other disasters from the same country."
 
-        except Exception as e:
-            print("AI parsing error:", e, raw)
+            
+            if not srcs and len(all_learnings) >= 2:
+                for l in all_learnings[:2]:
+                    srcs.append({
+                        "id":       l["id"],
+                        "code":     l["appeal_code"],
+                        "name":     l["appeal_name"],
+                        "event_id":  l.get("event_id"),
+                    })
 
-        # 6) Fallback if parsing fails entirely
+            out.append({
+                "title":           title,
+                "insight":         insight_text,
+                "recommendations": recs,
+                "source_note":     source_note,
+                "metadata": {
+                    "operational_learning_source": srcs
+                }
+            })
+
+        
+        if out:
+            return out
+
         return [{
             "title": "ParsingError",
             "insight": raw.strip(),
-            "metadata": {"operational_learning_source": []}
+            "metadata": { "operational_learning_source": [] }
         }]
-
