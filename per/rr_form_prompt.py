@@ -1,10 +1,11 @@
 """
-response_templates.py
-=====================
+rr_form_prompt.py
+==================
 
 Template system for generating comprehensive RR form suggestions.
 This module provides specialized templates for different sections of the rapid
-response form, designed to extract actionable insights from historical event data.
+response form, designed to extract actionable insights from appeal-driven event data.
+Uses rr_parsed_excel.json as the data source with simple string References format.
 
 The system generates evidence-based recommendations for:
 - Situation analysis and context assessment
@@ -43,7 +44,7 @@ class ResponseGenerationClient:
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
-            return response.choices[0].message.content
+            return response.choices[0].message.content or ""
         except Exception as e:
             raise RuntimeError(f"Response generation request failed: {e}")
 
@@ -54,73 +55,84 @@ class RRFormTemplateProcessor:
     # Base system message for all RR form sections
     base_system_message: str = (
         "You are an expert IFRC emergency response coordinator with extensive experience "
-        "in rapid response planning and deployment. Your role is to analyze historical "
+        "in rapid response planning and deployment. Your role is to analyze appeal-driven "
         "disaster response data and provide evidence-based recommendations for current "
         "rapid response planning. Focus on actionable insights that can guide immediate "
-        "decision-making and resource allocation."
+        "decision-making and resource allocation. "
+        "FORMATTING: Use professional bullet points with consistent structure, parallel grammar, "
+        "and standardized references: '(Reference: [APPEAL_CODE] – [Event Name], [Date in DD Month YYYY format])'. "
+        "End all bullets with periods and use semicolons for multiple clauses. "
+        "OUTPUT FORMAT: Return ONLY plain text strings, no structured data, JSON, or complex formatting. "
+        "DATA SOURCE: Uses rr_parsed_excel.json with simple string References format."
     )
 
     # Specialized templates for different RR form sections
     situation_analysis_template: str = (
-        "Based on the historical events provided, create a comprehensive situation analysis "
+        "Based on the appeal-driven events provided, create a comprehensive situation analysis "
         "that covers:\n\n"
         "1. **Context & Scale**: Typical impact patterns, affected populations, and geographic scope\n"
         "2. **Vulnerability Assessment**: Key at-risk populations and infrastructure\n"
         "3. **Operational Environment**: Access challenges, security considerations, local capacity\n"
         "4. **Precedent Analysis**: How similar events evolved and what factors influenced outcomes\n\n"
-        "Provide specific data points and reference similar historical events. "
-        "Format as clear, evidence-based paragraphs suitable for briefing senior management."
+        "Provide specific data points and reference similar appeal-driven events with appeal codes. "
+        "Format as clear, evidence-based paragraphs suitable for briefing senior management. "
+        "Always cite sources including appeal codes and event names in your analysis."
     )
 
     response_strategy_template: str = (
-        "Based on successful response patterns from similar historical events, recommend "
+        "Based on successful response patterns from similar appeal-driven events, recommend "
         "an optimal response strategy that addresses:\n\n"
         "1. **Strategic Approach**: Primary response modalities and intervention priorities\n"
         "2. **Sector Focus**: Which sectors (shelter, health, WASH, etc.) to prioritize based on historical needs\n"
         "3. **Partnership Strategy**: Key partnerships and coordination mechanisms that proved effective\n"
         "4. **Implementation Approach**: Phased deployment strategy and operational methodology\n\n"
-        "Reference specific examples from the historical data and explain why certain approaches "
-        "were successful. Include recommendations for adapting strategies to current context."
+        "Reference specific examples from the appeal-driven data with appeal codes and explain why certain approaches "
+        "were successful. Include recommendations for adapting strategies to current context. "
+        "Always cite specific appeal codes and event names when referencing successful strategies."
     )
 
     resource_planning_template: str = (
-        "Analyze historical resource deployment patterns to recommend optimal resource allocation:\n\n"
+        "Analyze appeal-driven resource deployment patterns to recommend optimal resource allocation:\n\n"
         "1. **Personnel Requirements**: Staffing levels, skill mix, and deployment timeline\n"
         "2. **ERU Deployment**: Emergency Response Unit types and capacity based on historical needs\n"
         "3. **Financial Planning**: Funding requirements and appeal strategy based on similar operations\n"
         "4. **Logistics Support**: Supply chain and operational support requirements\n\n"
         "Provide specific numbers where available from historical data and explain the rationale "
-        "for resource recommendations. Include scaling factors for different scenario sizes."
+        "for resource recommendations. Include scaling factors for different scenario sizes. "
+        "Always reference specific appeal codes and events when citing resource deployment examples."
     )
 
     timeline_planning_template: str = (
-        "Based on historical response timelines, create a realistic operational timeline:\n\n"
+        "Based on appeal-driven response timelines, create a realistic operational timeline:\n\n"
         "1. **Immediate Actions (0-72 hours)**: Critical first response priorities\n"
         "2. **Short-term Goals (1-2 weeks)**: Early stabilization and assessment objectives\n"
         "3. **Medium-term Planning (1-3 months)**: Sustained response and transition planning\n"
         "4. **Critical Milestones**: Key decision points and success indicators\n\n"
-        "Reference actual timelines from historical events and identify factors that "
-        "accelerated or delayed responses. Include contingency considerations."
+        "Reference actual timelines from appeal-driven events with specific appeal codes and identify factors that "
+        "accelerated or delayed responses. Include contingency considerations. "
+        "Always cite specific appeal codes and event names when discussing timeline examples."
     )
 
     risk_assessment_template: str = (
-        "Identify key risks and mitigation strategies based on historical challenges:\n\n"
+        "Identify key risks and mitigation strategies based on appeal-driven response challenges:\n\n"
         "1. **Operational Risks**: Access, security, coordination challenges from past events\n"
         "2. **Contextual Risks**: Political, social, environmental factors that affected responses\n"
         "3. **Resource Risks**: Funding, staffing, logistics challenges encountered historically\n"
         "4. **Mitigation Strategies**: Proven approaches for managing identified risks\n\n"
-        "Provide specific examples of how similar risks were managed in historical events "
-        "and recommend preventive measures for current planning."
+        "Provide specific examples with appeal codes of how similar risks were managed in appeal-driven events "
+        "and recommend preventive measures for current planning. "
+        "Always reference specific appeal codes and event names when discussing risk management approaches."
     )
 
     lessons_learned_template: str = (
-        "Extract key lessons and best practices from historical events:\n\n"
+        "Extract key lessons and best practices from appeal-driven events:\n\n"
         "1. **Success Factors**: What worked well and should be replicated\n"
         "2. **Challenges Overcome**: How historical responses overcame significant obstacles\n"
         "3. **Innovations Applied**: Novel approaches or adaptations that proved effective\n"
         "4. **Recommendations**: Specific actions to improve current response effectiveness\n\n"
         "Focus on actionable insights that can directly inform current planning. "
-        "Include specific examples and quantitative results where available."
+        "Include specific examples with appeal codes and quantitative results where available. "
+        "Always cite specific appeal codes and event names when providing lessons learned examples."
     )
 
     @staticmethod
@@ -147,6 +159,15 @@ class RRFormTemplateProcessor:
                 event_summary.append(f"Location: {country_name}")
             elif event.get('country_name'):  # Fallback
                 event_summary.append(f"Location: {event['country_name']}")
+                
+            # Add appeal code and source information at the beginning for visibility
+            appeal_source = event.get('appeal_source')
+            if appeal_source:
+                event_summary.insert(1, f"Appeal Code: {appeal_source}")
+                
+            source_note = event.get('source_note')
+            if source_note:
+                event_summary.append(f"Source: {source_note}")
                 
             # Date fields
             if event.get('disaster_start_date'):
@@ -225,12 +246,12 @@ class RRFormTemplateProcessor:
         return "\n".join(formatted_events)
 
     def generate_situation_analysis(self, events: List[Dict[str, Any]], temperature: float = 0.6) -> str:
-        """Generate situation analysis based on historical events."""
+        """Generate situation analysis based on appeal-driven events."""
         events_text = self._format_events_for_template(events, "situation")
         
         messages = [
             {"role": "system", "content": self.base_system_message},
-            {"role": "user", "content": f"{self.situation_analysis_template}\n\nHistorical Events Data:\n{events_text}"}
+            {"role": "user", "content": f"{self.situation_analysis_template}\n\nAppeal-Driven Events Data:\n{events_text}"}
         ]
         
         client = ResponseGenerationClient()
@@ -242,7 +263,7 @@ class RRFormTemplateProcessor:
         
         messages = [
             {"role": "system", "content": self.base_system_message},
-            {"role": "user", "content": f"{self.response_strategy_template}\n\nHistorical Events Data:\n{events_text}"}
+            {"role": "user", "content": f"{self.response_strategy_template}\n\nAppeal-Driven Events Data:\n{events_text}"}
         ]
         
         client = ResponseGenerationClient()
@@ -254,7 +275,7 @@ class RRFormTemplateProcessor:
         
         messages = [
             {"role": "system", "content": self.base_system_message},
-            {"role": "user", "content": f"{self.resource_planning_template}\n\nHistorical Events Data:\n{events_text}"}
+            {"role": "user", "content": f"{self.resource_planning_template}\n\nAppeal-Driven Events Data:\n{events_text}"}
         ]
         
         client = ResponseGenerationClient()
@@ -266,7 +287,7 @@ class RRFormTemplateProcessor:
         
         messages = [
             {"role": "system", "content": self.base_system_message},
-            {"role": "user", "content": f"{self.timeline_planning_template}\n\nHistorical Events Data:\n{events_text}"}
+            {"role": "user", "content": f"{self.timeline_planning_template}\n\nAppeal-Driven Events Data:\n{events_text}"}
         ]
         
         client = ResponseGenerationClient()
@@ -278,7 +299,7 @@ class RRFormTemplateProcessor:
         
         messages = [
             {"role": "system", "content": self.base_system_message},
-            {"role": "user", "content": f"{self.risk_assessment_template}\n\nHistorical Events Data:\n{events_text}"}
+            {"role": "user", "content": f"{self.risk_assessment_template}\n\nAppeal-Driven Events Data:\n{events_text}"}
         ]
         
         client = ResponseGenerationClient()
@@ -290,7 +311,7 @@ class RRFormTemplateProcessor:
         
         messages = [
             {"role": "system", "content": self.base_system_message},
-            {"role": "user", "content": f"{self.lessons_learned_template}\n\nHistorical Events Data:\n{events_text}"}
+            {"role": "user", "content": f"{self.lessons_learned_template}\n\nAppeal-Driven Events Data:\n{events_text}"}
         ]
         
         client = ResponseGenerationClient()
