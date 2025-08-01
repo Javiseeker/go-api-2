@@ -29,7 +29,6 @@ class AzureServiceClient:
         """Send summary and description to Azure OpenAI and get structured summary with top 3 learnings"""
         if not self.openai_client:
             return None
-
         # Combine summary, description, and learning data
         learning_texts = []
         if learning_data:
