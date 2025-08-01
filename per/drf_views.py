@@ -1424,7 +1424,8 @@ class IFRCEventListView(views.APIView):
             "appeal_code__country": country_id,
         }
         if disaster_type_id is not None:
-            params["appeal_code__dtype"] = disaster_type_id
+            # actually filter by the nested event dtype field
+            params["appeal__event_details__dtype"] = disaster_type_id
 
         resp = self._make_api_request(
             "https://goadmin.ifrc.org/api/v2/ops-learning/",
@@ -1432,7 +1433,8 @@ class IFRCEventListView(views.APIView):
             "ops learning"
         ).get("results", [])
 
-        print(f"=== DEBUG: {len(resp)} learnings fetched from API (country={country_id}, dtype={disaster_type_id}) ===")
+        print(f"=== DEBUG: {len(resp)} learnings fetched from API "
+              f"(country={country_id}, dtype={disaster_type_id}) ===")
         return resp
 
     def _fetch_events_by_country_only(self, country_id: int) -> Dict[str, Any]:
@@ -1684,7 +1686,7 @@ class IFRCEventListView(views.APIView):
             "role": "user",
             "content": (
                 "Here are the learnings:\n" + learnings_block +
-                "\n\nPlease synthesize up to 6 actionable insights by combining any learnings that share a theme. "
+                "\n\nPlease synthesize up to 6 actionable insights by combining any learnings that share a theme. Explain how the insight is buiilt using the sources and appeal codes"
                 "Each insight must draw on at least two of the above. If the insight is based off different disasters, then try to link it to the current disaster. "
                 "Then for each insight, under a key called `recommendations`, list 1–2 clear next steps that an operational team could take.  "
                 "In `metadata.operational_learning_source` list every source you used (with its `id`, `code`, and `name`).  "
@@ -1722,13 +1724,11 @@ class IFRCEventListView(views.APIView):
             if not (title and insight_text and isinstance(meta, dict)):
                 continue
 
-           
+            # build the list of source dicts
             srcs = []
             for entry in meta.get("operational_learning_source", []):
                 rid = entry["id"] if isinstance(entry, dict) else entry
                 match = next((l for l in all_learnings if str(l["id"]) == str(rid)), None)
-                if match is None and isinstance(entry, dict):
-                    match = next((l for l in all_learnings if l["appeal_code"] == entry.get("code")), None)
                 if not match:
                     continue
                 srcs.append({
@@ -1736,41 +1736,35 @@ class IFRCEventListView(views.APIView):
                     "code":     match["appeal_code"],
                     "name":     match["appeal_name"],
                     "event_id": match.get("event_id"),
-                    "_source_note": match.get("source_note")  # stash original
                 })
 
-            # decide whether this insight is "similar" vs "other"
-            notes = [s.pop("_source_note", "") for s in srcs]
-            if any("similar disasters" in n for n in notes):
-                source_note = "This insight was built off similar disasters from the same country."
-            else:
-                source_note = "This insight was built off other disasters from the same country."
-
-            
+            # if none matched, fall back to first two learnings
             if not srcs and len(all_learnings) >= 2:
                 for l in all_learnings[:2]:
                     srcs.append({
                         "id":       l["id"],
                         "code":     l["appeal_code"],
                         "name":     l["appeal_name"],
-                        "event_id":  l.get("event_id"),
+                        "event_id": l.get("event_id"),
                     })
+
+            # New: simple, descriptive source_note
+            insight_source_note = (
+                f"This insight was synthesized from {len(srcs)} operational-learning source"
+                + ("s." if len(srcs) != 1 else ".")
+            )
 
             out.append({
                 "title":           title,
                 "insight":         insight_text,
                 "recommendations": recs,
-                "source_note":     source_note,
+                "source_note":     insight_source_note,
                 "metadata": {
                     "operational_learning_source": srcs
                 }
             })
 
-        
-        if out:
-            return out
-
-        return [{
+        return out or [{
             "title": "ParsingError",
             "insight": raw.strip(),
             "metadata": { "operational_learning_source": [] }
