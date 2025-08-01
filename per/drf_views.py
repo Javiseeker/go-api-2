@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Any
 import requests
 import pytz
 import httpx
-
+from django.core.cache import cache
 import pandas as pd
 from tempfile import NamedTemporaryFile
 from per.blob_upload import upload_to_blob
@@ -396,6 +396,7 @@ class PerDrefLLMSummaryView(APIView):
                 "metadata": {
                     "dref_id": dref_data.id,
                     "dref_title": dref_data.title,
+                    "dref_appeal_code": dref_data.appeal_code,
                     "dref_date": dref_data.event_date,
                     "dref_created_at": dref_data.created_at if hasattr(dref_data, 'created_at') else None,
                     "dref_budget_file": getattr(dref_data, 'budget_file_preview', None),
@@ -517,6 +518,7 @@ class PerDrefSituationalOverviewView(APIView):
                     # Basic DREF information (minimal, for reference)
                     "dref_id": dref_data.id,
                     "dref_title": getattr(dref_data, 'title', None),
+                    "dref_appeal_code": getattr(dref_data, 'appeal_code', None),
                     "dref_date": getattr(dref_data, 'date_of_approval', None)
                 }
             }
@@ -1288,6 +1290,7 @@ class PerDocumentUploadViewSet(viewsets.ModelViewSet):
 class IFRCEventListView(views.APIView):
     """API view for fetching and enriching IFRC event data with operational learning insights."""
     DISASTER_TYPE_EVENT_THRESHOLD = 1
+    CACHE_TIMEOUT = 3600  # seconds
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.azure_client = AzureServiceClient()
@@ -1300,6 +1303,11 @@ class IFRCEventListView(views.APIView):
 
         country_id = int(request.query_params['country'])
         disaster_type_id = int(request.query_params['disaster_type'])
+
+        cache_key = f"ifrc_events_summary:{country_id}:{disaster_type_id}"
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return Response({"ai_structured_summary": cached}, status=drf_status.HTTP_200_OK)
 
         # STEP 1: primary (country AND disaster)
         primary = self._fetch_ops_learning(country_id, disaster_type_id)
@@ -1347,6 +1355,7 @@ class IFRCEventListView(views.APIView):
 
         # STEP 5: Call AI summary generator
         ai_summary = self._generate_ai_summary([{"related_ops_learning": processed_learnings}])
+        cache.set(cache_key, ai_summary, timeout=self.CACHE_TIMEOUT)
         return Response({"ai_structured_summary": ai_summary}, status=drf_status.HTTP_200_OK)
 
    
