@@ -84,6 +84,8 @@ class RRCapacityQuestionsView(APIView):
             
             # Now events_data is already appeal-driven and deduped by appeal code
             
+
+            
             # Process questions and fill missing fields
             processed_questions = self._process_questions(questions_data, events_data, ops_learning_data)
             
@@ -124,6 +126,7 @@ class RRCapacityQuestionsView(APIView):
         appeal_events = []
         appeal_codes = set()
         
+        
         # Handle None or empty ops_learning_data
         if not ops_learning_data:
             return appeal_events
@@ -152,23 +155,23 @@ class RRCapacityQuestionsView(APIView):
                         
                 except Exception:
                     continue  # Skip failed requests
-                    
+        
         return appeal_events
 
-    def _fetch_ops_learning_data(self, country_id: int, disaster_type_id: int, target_count: int = 20) -> List[Dict[str, Any]]:
+    def _fetch_ops_learning_data(self, country_id: int, disaster_type_id: int, target_count: int = 10) -> List[Dict[str, Any]]:
         """
         Fetch ops-learning data using GO's new API filters with two-stage approach.
         
-        STAGE 1: Fetch up to target_count using both appeal_code__country and appeal_code__dtype
+        STAGE 1: Fetch up to 10 using both appeal_code__country and appeal_code__dtype
         STAGE 2: If fewer results than desired, fetch additional using only appeal_code__country
         
         Returns empty list if no data found in either stage.
         Deduplicates by appeal_code to ensure no operation appears twice.
-        Caps final results to target_count (default: 20) via limit parameter.
+        Caps final results to 10 via limit parameter.
         """
         
         # STAGE 1: Fetch with both country and disaster type filters
-        primary_batch = self._fetch_ops_learning(country_id, disaster_type_id, limit=target_count)
+        primary_batch = self._fetch_ops_learning(country_id, disaster_type_id, limit=10)
         primary_labeled = [
             {**l, "source_note": "This insight was built off similar disasters from the same country."}
             for l in primary_batch
@@ -189,8 +192,8 @@ class RRCapacityQuestionsView(APIView):
                 deduplicated_results.append(learning)
         
         # STAGE 2: If we need more results, fetch country-only data
-        if len(deduplicated_results) < target_count:
-            remaining_needed = target_count - len(deduplicated_results)
+        if len(deduplicated_results) < 10:
+            remaining_needed = 10 - len(deduplicated_results)
             secondary_batch = self._fetch_ops_learning_by_country_only(country_id, limit=remaining_needed * 2)  # Fetch extra for deduplication
             
             secondary_labeled = [
@@ -200,7 +203,7 @@ class RRCapacityQuestionsView(APIView):
             
             # Add secondary results, avoiding duplicates by appeal code
             for learning in secondary_labeled:
-                if len(deduplicated_results) >= target_count:
+                if len(deduplicated_results) >= 10:
                     break
                     
                 appeal_info = learning.get('appeal', {})
@@ -208,7 +211,7 @@ class RRCapacityQuestionsView(APIView):
                 if appeal_code and appeal_code not in seen_appeal_codes:
                     seen_appeal_codes.add(appeal_code)
                     deduplicated_results.append(learning)
-                elif not appeal_code and len(deduplicated_results) < target_count:  # Include entries without appeal codes if space
+                elif not appeal_code and len(deduplicated_results) < 10:  # Include entries without appeal codes if space
                     deduplicated_results.append(learning)
         
         # If no data found in either stage, return empty list
@@ -216,7 +219,7 @@ class RRCapacityQuestionsView(APIView):
             return []
         
         # Cap final results to target count and return
-        return deduplicated_results[:target_count]
+        return deduplicated_results[:10]
 
     def _fetch_ops_learning(self, country_id: int, disaster_type_id: int, limit: int = 10) -> List[Dict[str, Any]]:
         """Fetch validated ops-learning data filtered by appeal country and disaster type using GO's new API filters."""
