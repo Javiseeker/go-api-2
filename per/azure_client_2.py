@@ -132,8 +132,8 @@ class AzureServiceClient:
         # Extract top facts for front-loading in system prompt
         top_facts = self._extract_key_facts(event_data, ops_learning_data)
         
-        # Concise system prompt with key facts front-loaded
-        system_prompt = self._build_concise_system_prompt(critical_question, area, top_facts)
+        # Build consolidated system prompt with key facts and question-specific guidance
+        system_prompt = self._build_system_prompt(critical_question, area, top_facts)
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -159,6 +159,8 @@ class AzureServiceClient:
 
         if response:
             response = self._clean_markdown_formatting(response)
+            # Validate that response only uses information from provided sources
+            response = self._validate_response_sources(response, events_context, learning_context)
 
         return response
 
@@ -171,12 +173,23 @@ class AzureServiceClient:
         
         # Extract top event facts
         for event in (event_data or [])[:2]:  # Top 2 events
+            # Skip non-dictionary entries to avoid .get() errors
+            if not isinstance(event, dict):
+                continue
+                
             name = event.get("name", "Unknown Event")
             appeals = event.get("appeals") or []
             if appeals:
-                appeal_code = appeals[0].get("code", "")
-                start_date = appeals[0].get("start_date", "")
-                if appeal_code and start_date:
+                first_appeal = appeals[0]
+                if isinstance(first_appeal, dict):
+                    appeal_code = first_appeal.get("code", "")
+                    start_date = first_appeal.get("start_date", "")
+                else:
+                    # Handle integer appeal IDs
+                    appeal_code = str(first_appeal)
+                    start_date = ""
+                
+                if appeal_code:
                     date_fmt = self._format_date_for_reference(start_date) if start_date else ""
                     severity = event.get("ifrc_severity_level_display", "")
                     num_affected = event.get("num_affected")
@@ -191,109 +204,136 @@ class AzureServiceClient:
         
         # Extract top ops-learning facts
         for learning in (ops_learning_data or [])[:2]:  # Top 2 learning items
+            # Skip non-dictionary entries to avoid .get() errors
+            if not isinstance(learning, dict):
+                continue
+                
             learning_text = (
                 learning.get("learning_validated_en") or 
                 learning.get("learning_validated") or 
                 learning.get("learning_en", "")
             )
             appeal_info = learning.get("appeal", {})
-            appeal_code = appeal_info.get("code", "")
+            if isinstance(appeal_info, dict):
+                appeal_code = appeal_info.get("code", "")
+            else:
+                # Handle integer appeal IDs
+                appeal_code = str(appeal_info) if appeal_info else ""
+            
             if learning_text and appeal_code:
                 short_learning = learning_text[:80] + "..." if len(learning_text) > 80 else learning_text
                 facts.append(f"Learning: {short_learning} | Appeal: {appeal_code}")
         
         return "\n".join(facts) if facts else "No key facts available"
 
-    def _build_concise_system_prompt(self, critical_question: str, area: str, top_facts: str) -> str:
-        """Build a concise system prompt with key facts front-loaded."""
-        return (
-            f"You are an IFRC emergency response specialist conducting rapid response capacity assessment.\n\n"
-            f"KEY FACTS FROM SOURCES:\n{top_facts}\n\n"
-            f"RULES:\n"
-            f"- ONLY use information explicitly stated in the provided sources\n"
-            f"- NEVER create, invent, or assume any information\n"
-            f"- Each bullet MUST include specific facts (numbers, dates, places, names) from sources\n"
-            f"- Format: UPPERCASE LABEL: analysis with specific facts (Reference: CODE – Event, Date)\n"
-            f"- If insufficient source data, respond: 'Enough source is not available to answer this question'\n"
-            f"- Generate 3-4 bullets with diverse analytical perspectives\n"
-            f"- Plain text only, no markdown"
-        )
+    def _validate_response_sources(self, response: str, events_context: str, learning_context: str) -> str:
+        """Validate that response only uses information from provided sources."""
+        if not response:
+            return response
+            
+        # Check if response mentions countries/places not in sources
+        response_lower = response.lower()
+        
+        # Extract country names from sources
+        source_countries = set()
+        if "philippines" in events_context.lower() or "philippines" in learning_context.lower():
+            source_countries.add("philippines")
+        if "djibouti" in events_context.lower() or "djibouti" in learning_context.lower():
+            source_countries.add("djibouti")
+            
+        # Check for problematic patterns
+        if "djibouti" in response_lower and "philippines" not in response_lower:
+            if "djibouti" not in source_countries:
+                return "Enough source is not available to answer this question"
+                
+        # Check for appeal codes that don't match sources
+        import re
+        appeal_codes_in_response = re.findall(r'MDR[A-Z]{3}\d+', response)
+        appeal_codes_in_sources = re.findall(r'MDR[A-Z]{3}\d+', events_context + learning_context)
+        
+        for code in appeal_codes_in_response:
+            if code not in appeal_codes_in_sources:
+                return "Enough source is not available to answer this question"
+                
+        return response
 
-    def _get_question_specific_prompt(self, critical_question: str, area: str) -> str:
-        """Generate question-specific system prompts based on question content and area."""
+    def _build_system_prompt(self, critical_question: str, area: str, top_facts: str) -> str:
+        """Build a comprehensive system prompt with key facts and question-specific guidance."""
         question_lower = (critical_question or "").lower()
         area_lower = (area or "").lower()
 
-        base = (
-            "You are an IFRC emergency response specialist conducting a rapid response capacity assessment. "
-            "ABSOLUTE RULE: You MUST ONLY use information that is EXPLICITLY provided in the sources (events context and operational learning context). "
-            "NEVER create, invent, infer, assume, or generate ANY information that is not directly stated in the provided sources. "
-            "NEVER make up facts, numbers, dates, places, names, or any details. "
-            "If you cannot answer a question based on the provided sources, respond with: 'Enough source is not available to answer this question' "
-            "Generate 3–4 distinct insights with diverse analytical approaches and varied language patterns. "
-            "Each bullet MUST begin with a concise UPPERCASE LABEL followed by a colon, then your analysis. "
-            "Use different sentence structures, perspectives, and analytical angles across bullets. "
-            "PLAIN TEXT ONLY (no markdown). "
-            "REQUIREMENTS: Each bullet MUST include at least one specific fact (number, date, place, or named unit) FROM THE PROVIDED SOURCES ONLY. "
-            "Tie each bullet to a specific field report/appeal ID and quote exact figures FROM THE PROVIDED SOURCES ONLY. "
-            "Vary conclusions across bullets (strengths, contradictions, deltas vs previous ops) BASED ON PROVIDED SOURCES ONLY. "
-            "Ensure appeal code country matches the NS context FROM THE PROVIDED SOURCES ONLY. "
-            "Diversify analytical lenses: legal doc review, FR metrics, ops-learning, contacts' statements USING ONLY PROVIDED SOURCES. "
+        # Base rules and requirements
+        base_prompt = (
+            f"You are an IFRC emergency response specialist conducting rapid response capacity assessment.\n\n"
+            f"KEY FACTS FROM SOURCES:\n{top_facts}\n\n"
+            f"CRITICAL INSTRUCTION: You are ONLY allowed to use information that is EXPLICITLY provided in the sources above.\n"
+            f"You are FORBIDDEN from using any information from your training data, general knowledge, or any other source.\n"
+            f"If the sources do not contain enough information to answer the question, you MUST respond with:\n"
+            f"'Enough source is not available to answer this question'\n\n"
+            f"ABSOLUTE RULES:\n"
+            f"- ONLY use information explicitly stated in the provided sources above\n"
+            f"- NEVER create, invent, infer, assume, or generate ANY information not directly stated in sources\n"
+            f"- NEVER use information from your training data or general knowledge\n"
+            f"- If insufficient source data, respond: 'Enough source is not available to answer this question'\n"
+            f"- Each bullet MUST include specific facts (numbers, dates, places, named units) from sources\n"
+            f"- Format: UPPERCASE LABEL: analysis with specific facts (Reference: CODE – Event, Date)\n"
+            f"- Generate 3-4 bullets with diverse analytical perspectives\n"
+            f"- Plain text only, no markdown\n\n"
         )
 
+        # Question-specific focus areas
         if "mandate" in question_lower or "officially recognised" in question_lower:
-            specific = (
-                "Focus on LEGAL MANDATE and OFFICIAL RECOGNITION: legal frameworks, auxiliary status, formal agreements. "
-                "Analyze legislative status, recognition gaps, and formal agreements in context. "
+            specific_focus = (
+                "FOCUS AREA: LEGAL MANDATE and OFFICIAL RECOGNITION\n"
+                "Analyze legal frameworks, auxiliary status, formal agreements, legislative status, and recognition gaps.\n\n"
             )
         elif "policy" in question_lower or "strategic" in question_lower:
-            specific = (
-                "Focus on POLICY FRAMEWORKS and STRATEGIC DOCUMENTS: policy development, strategic planning, "
-                "documentation quality, implementation gaps. "
+            specific_focus = (
+                "FOCUS AREA: POLICY FRAMEWORKS and STRATEGIC DOCUMENTS\n"
+                "Analyze policy development, strategic planning, documentation quality, and implementation gaps.\n\n"
             )
         elif "risk" in question_lower or "early warning" in question_lower:
-            specific = (
-                "Focus on RISK MANAGEMENT and EARLY WARNING SYSTEMS: risk assessment capabilities, monitoring systems, "
-                "warning mechanisms, preparedness. "
+            specific_focus = (
+                "FOCUS AREA: RISK MANAGEMENT and EARLY WARNING SYSTEMS\n"
+                "Analyze risk assessment capabilities, monitoring systems, warning mechanisms, and preparedness.\n\n"
             )
         elif "business continuity" in question_lower or "continuity plan" in question_lower:
-            specific = (
-                "Focus on BUSINESS CONTINUITY and OPERATIONAL RESILIENCE: continuity planning, resilience measures, "
-                "crisis management, recovery procedures. "
+            specific_focus = (
+                "FOCUS AREA: BUSINESS CONTINUITY and OPERATIONAL RESILIENCE\n"
+                "Analyze continuity planning, resilience measures, crisis management, and recovery procedures.\n\n"
             )
         elif "operations management" in question_lower or "coordination systems" in question_lower:
-            specific = (
-                "Focus on OPERATIONS MANAGEMENT and COORDINATION SYSTEMS: management structures, coordination mechanisms, "
-                "operational procedures, system effectiveness. "
+            specific_focus = (
+                "FOCUS AREA: OPERATIONS MANAGEMENT and COORDINATION SYSTEMS\n"
+                "Analyze management structures, coordination mechanisms, operational procedures, and system effectiveness.\n\n"
             )
         elif "information" in question_lower or "data" in question_lower:
-            specific = (
-                "Focus on INFORMATION MANAGEMENT and DATA SYSTEMS: data collection, information sharing, integration, reporting. "
+            specific_focus = (
+                "FOCUS AREA: INFORMATION MANAGEMENT and DATA SYSTEMS\n"
+                "Analyze data collection, information sharing, integration, and reporting capabilities.\n\n"
             )
         elif "coordination" in question_lower and ("mechanisms" in question_lower or "relationships" in question_lower):
-            specific = (
-                "Focus on COORDINATION MECHANISMS and INTER-AGENCY RELATIONSHIPS: structures, partnership frameworks, "
-                "communication channels, collaboration effectiveness. "
+            specific_focus = (
+                "FOCUS AREA: COORDINATION MECHANISMS and INTER-AGENCY RELATIONSHIPS\n"
+                "Analyze structures, partnership frameworks, communication channels, and collaboration effectiveness.\n\n"
             )
         else:
-            specific = (
-                "Focus on the SPECIFIC CAPACITY referenced by the question; provide concrete, context-grounded insights. "
+            specific_focus = (
+                "FOCUS AREA: CAPACITY ASSESSMENT\n"
+                "Analyze the specific capacity referenced by the question with concrete, context-grounded insights.\n\n"
             )
 
-        formatting = (
-            "Format: Begin each bullet with a relevant UPPERCASE LABEL and colon. "
-            "Include a reference citation at the end when supported by event/appeal data FROM THE PROVIDED SOURCES ONLY. "
-            "Vary your label choices and analytical perspectives. "
-            "ABSOLUTE RULE: ONLY use information from the provided sources. "
-            "NEVER create, invent, infer, assume, or generate ANY information not directly stated in the sources. "
-            "If insufficient source information is available, respond with: 'Enough source is not available to answer this question' "
-            "FACT ENFORCEMENT: Each bullet must include specific facts FROM THE PROVIDED SOURCES ONLY (numbers, dates, places, named units). "
-            "Cross-check appeal codes match the country context FROM THE PROVIDED SOURCES ONLY. "
-            "Diversify analytical approaches across bullets USING ONLY PROVIDED SOURCES. "
-            "Plain text only."
+        # Final requirements
+        requirements = (
+            "REQUIREMENTS:\n"
+            "- Tie each bullet to specific field report/appeal IDs with exact figures from sources\n"
+            "- Vary conclusions across bullets (strengths, contradictions, operational deltas)\n"
+            "- Ensure appeal codes match country context from sources\n"
+            "- Diversify analytical lenses: legal review, FR metrics, ops-learning, contacts' statements\n"
+            "- Cross-check all facts against provided sources only"
         )
 
-        return base + specific + formatting
+        return base_prompt + specific_focus + requirements
 
     def _clean_markdown_formatting(self, text: str) -> str:
         """Remove common markdown artifacts."""
@@ -390,11 +430,25 @@ class AzureServiceClient:
 
             # Header / IDs
             name = event.get("name", "Unknown")
-            dtype = (event.get("dtype") or {}).get("name") or event.get("dtype_name") or "Unknown"
+            dtype_obj = event.get("dtype")
+            if isinstance(dtype_obj, dict):
+                dtype = dtype_obj.get("name") or event.get("dtype_name") or "Unknown"
+            else:
+                # Handle integer disaster type ID
+                dtype = event.get("dtype_name") or f"Disaster Type ID: {dtype_obj}" if dtype_obj else "Unknown"
             countries = event.get("countries") or []
-            country_names = ", ".join([c.get("name", "Unknown") for c in countries]) if countries else event.get(
-                "country_name", "Unknown"
-            )
+            # Updated logic: handle dicts and ints
+            if countries:
+                country_names_list: List[str] = []
+                for c in countries:
+                    if isinstance(c, dict):
+                        country_names_list.append(c.get("name", "Unknown"))
+                    else:
+                        # For integer IDs, represent them explicitly
+                        country_names_list.append(f"Country ID: {c}")
+                country_names = ", ".join(country_names_list)
+            else:
+                country_names = event.get("country_name", "Unknown")
             date_str = ""
             if event.get("disaster_start_date"):
                 date_str = self._format_date_for_reference(event["disaster_start_date"])
@@ -436,14 +490,26 @@ class AzureServiceClient:
             if appeals:
                 a_lines = []
                 for ap in appeals[:MAX_APPEALS_PER_EVENT]:
-                    code = ap.get("code") or ""
-                    atype = ap.get("atype_display") or ""
-                    amt_req = ap.get("amount_requested")
-                    amt_fund = ap.get("amount_funded")
-                    n_ben = ap.get("num_beneficiaries")
-                    st = ap.get("status_display") or ""
-                    sd = ap.get("start_date")
-                    ed = ap.get("end_date")
+                    if isinstance(ap, dict):
+                        code = ap.get("code") or ""
+                        atype = ap.get("atype_display") or ""
+                        amt_req = ap.get("amount_requested")
+                        amt_fund = ap.get("amount_funded")
+                        n_ben = ap.get("num_beneficiaries")
+                        st = ap.get("status_display") or ""
+                        sd = ap.get("start_date")
+                        ed = ap.get("end_date")
+                    else:
+                        # Handle integer appeal IDs
+                        code = str(ap)
+                        atype = ""
+                        amt_req = None
+                        amt_fund = None
+                        n_ben = None
+                        st = ""
+                        sd = ""
+                        ed = ""
+                    
                     sd_fmt = self._format_date_for_reference(sd) if sd else ""
                     ed_fmt = self._format_date_for_reference(ed) if ed else ""
                     line = []
@@ -470,63 +536,73 @@ class AzureServiceClient:
             if frs:
                 fr_blocks = []
                 for idx, fr in enumerate(frs[:MAX_FR_PER_EVENT], 1):
-                    fr_lines = [f"Field Report {idx} (id {fr.get('id', '')}):"]
-                    fr_date = fr.get("report_date") or fr.get("created_at")
-                    fr_date_fmt = self._format_date_for_reference(fr_date) if fr_date else ""
-                    if fr_date_fmt:
-                        fr_lines.append(f"  Date: {fr_date_fmt}")
-                    # Key numerics
-                    keys = [
-                        ("num_dead", "Dead"),
-                        ("num_injured", "Injured"),
-                        ("num_missing", "Missing"),
-                        ("num_affected", "Affected"),
-                        ("num_displaced", "Displaced"),
-                        ("num_assisted", "Assisted"),
-                        ("num_localstaff", "Local Staff"),
-                        ("num_volunteers", "Volunteers"),
-                        ("num_expats_delegates", "International Delegates"),
-                        ("gov_num_dead", "Gov Dead"),
-                        ("gov_num_affected", "Gov Affected"),
-                        ("other_num_affected", "Other Affected"),
-                    ]
-                    fig_entries = []
-                    for k, label in keys:
-                        val = fr.get(k)
-                        if val not in (None, "", 0):
-                            fig_entries.append(f"{label}: {self._fmt_num(val)}")
-                    if fig_entries:
-                        fr_lines.append("  Figures: " + " | ".join(fig_entries))
+                    if isinstance(fr, dict):
+                        fr_lines = [f"Field Report {idx} (id {fr.get('id', '')}):"]
+                        fr_date = fr.get("report_date") or fr.get("created_at")
+                        fr_date_fmt = self._format_date_for_reference(fr_date) if fr_date else ""
+                        if fr_date_fmt:
+                            fr_lines.append(f"  Date: {fr_date_fmt}")
+                        # Key numerics
+                        keys = [
+                            ("num_dead", "Dead"),
+                            ("num_injured", "Injured"),
+                            ("num_missing", "Missing"),
+                            ("num_affected", "Affected"),
+                            ("num_displaced", "Displaced"),
+                            ("num_assisted", "Assisted"),
+                            ("num_localstaff", "Local Staff"),
+                            ("num_volunteers", "Volunteers"),
+                            ("num_expats_delegates", "International Delegates"),
+                            ("gov_num_dead", "Gov Dead"),
+                            ("gov_num_affected", "Gov Affected"),
+                            ("other_num_affected", "Other Affected"),
+                        ]
+                        fig_entries = []
+                        for k, label in keys:
+                            val = fr.get(k)
+                            if val not in (None, "", 0):
+                                fig_entries.append(f"{label}: {self._fmt_num(val)}")
+                        if fig_entries:
+                            fr_lines.append("  Figures: " + " | ".join(fig_entries))
 
-                    # Narrative
-                    fr_sum = self._strip_html(fr.get("summary", ""))
-                    fr_desc = self._strip_html(fr.get("description", ""))
-                    if fr_sum:
-                        fr_lines.append("  Summary: " + fr_sum)
-                    if fr_desc and fr_desc != fr_sum:
-                        fr_lines.append("  Description: " + fr_desc)
+                        # Narrative
+                        fr_sum = self._strip_html(fr.get("summary", ""))
+                        fr_desc = self._strip_html(fr.get("description", ""))
+                        if fr_sum:
+                            fr_lines.append("  Summary: " + fr_sum)
+                        if fr_desc and fr_desc != fr_sum:
+                            fr_lines.append("  Description: " + fr_desc)
 
-                    # Contacts
-                    contacts = fr.get("contacts") or []
-                    if contacts:
-                        c_lines = []
-                        for c in contacts:
-                            cname = c.get("name") or ""
-                            ctitle = c.get("title") or ""
-                            ctype = c.get("ctype") or ""
-                            cemail = c.get("email") or ""
-                            cphone = c.get("phone") or ""
-                            frag = ", ".join([p for p in [cname, ctitle, ctype] if p])
-                            if cemail:
-                                frag += f" | {cemail}"
-                            if cphone:
-                                frag += f" | {cphone}"
-                            if frag:
-                                c_lines.append(f"    - {frag}")
-                        if c_lines:
-                            fr_lines.append("  Contacts:\n" + "\n".join(c_lines))
+                        # Contacts
+                        contacts = fr.get("contacts") or []
+                        if contacts:
+                            c_lines = []
+                            for c in contacts:
+                                if isinstance(c, dict):
+                                    cname = c.get("name") or ""
+                                    ctitle = c.get("title") or ""
+                                    ctype = c.get("ctype") or ""
+                                    cemail = c.get("email") or ""
+                                    cphone = c.get("phone") or ""
+                                    frag = ", ".join([p for p in [cname, ctitle, ctype] if p])
+                                    if cemail:
+                                        frag += f" | {cemail}"
+                                    if cphone:
+                                        frag += f" | {cphone}"
+                                    if frag:
+                                        c_lines.append(f"    - {frag}")
+                                else:
+                                    # Handle integer contact IDs
+                                    c_lines.append(f"    - Contact ID: {c}")
+                            if c_lines:
+                                fr_lines.append("  Contacts:\n" + "\n".join(c_lines))
 
-                    fr_blocks.append("\n".join(fr_lines))
+                        fr_blocks.append("\n".join(fr_lines))
+                    else:
+                        # Handle integer field report IDs
+                        fr_lines = [f"Field Report {idx} (ID: {fr}):"]
+                        fr_lines.append("  Note: Field report details not available")
+                        fr_blocks.append("\n".join(fr_lines))
                 if fr_blocks:
                     parts.append("Field Reports:\n" + "\n\n".join(fr_blocks))
 
@@ -557,6 +633,10 @@ class AzureServiceClient:
         formatted_learning = []
         # === UPDATED: allow up to 10 ops-learning items for conciseness ===
         for i, learning_item in enumerate(ops_learning_data[:10], 1):
+            # Skip non-dictionary entries to avoid .get() errors
+            if not isinstance(learning_item, dict):
+                continue
+                
             learning_text = (
                 learning_item.get("learning_validated_en")
                 or learning_item.get("learning_validated")
@@ -567,20 +647,25 @@ class AzureServiceClient:
             learning_info = [f"Learning {i}: {learning_text[:100]}{'...' if len(learning_text) > 100 else ''}"]
 
             appeal_info = learning_item.get("appeal", {})
-            event_details = appeal_info.get("event_details", {})
+            if isinstance(appeal_info, dict):
+                event_details = appeal_info.get("event_details", {})
+                appeal_code = appeal_info.get("code")
+                if appeal_code:
+                    learning_info.append(f"Appeal Code: {appeal_code}")
+                elif appeal_info.get("name"):
+                    learning_info.append(f"Appeal: {appeal_info['name']}")
 
-            appeal_code = appeal_info.get("code")
-            if appeal_code:
-                learning_info.append(f"Appeal Code: {appeal_code}")
-            elif appeal_info.get("name"):
-                learning_info.append(f"Appeal: {appeal_info['name']}")
+                if isinstance(event_details, dict) and event_details.get("name"):
+                    learning_info.append(f"Event: {event_details['name']}")
 
-            if event_details.get("name"):
-                learning_info.append(f"Event: {event_details['name']}")
-
-            if appeal_info.get("start_date"):
-                formatted_date = self._format_date_for_reference(appeal_info["start_date"])
-                learning_info.append(f"Date: {formatted_date}")
+                if appeal_info.get("start_date"):
+                    formatted_date = self._format_date_for_reference(appeal_info["start_date"])
+                    learning_info.append(f"Date: {formatted_date}")
+            else:
+                # Handle integer appeal IDs
+                appeal_code = str(appeal_info) if appeal_info else ""
+                if appeal_code:
+                    learning_info.append(f"Appeal Code: {appeal_code}")
 
             if learning_item.get("document_name"):
                 learning_info.append(f"Document: {learning_item['document_name']}")

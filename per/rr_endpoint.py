@@ -6,7 +6,7 @@ RR Capacity Questions processing endpoint.
 Loads rr_parsed_excel.json data, fills only the 'Notes on Response Capacity with sources' field using AI service, generates Excel output.
 
 Updates:
-- Uses GO's new ops-learning API filters: appeal_code__country and appeal_code__dtype
+- Uses GO's correct ops-learning API filters: appeal_code__country and appeal_code__dtype__in
 - Implements two-stage fetch strategy with deduplication by appeal code
 - Caps results via limit parameter for optimal performance
 - Events are fetched ONLY from appeal codes in ops-learning data (no historical events)
@@ -80,9 +80,9 @@ class RRCapacityQuestionsView(APIView):
             ops_learning_data = self._fetch_ops_learning_data(country_id, disaster_type_id)
             if not ops_learning_data:
                 ops_learning_data = []
-            events_data = self._fetch_events_from_appeals(ops_learning_data)
+            events_data = self._fetch_events_from_ops_learning(ops_learning_data)
             
-            # Now events_data is already appeal-driven and deduped by appeal code
+            # Now events_data is fetched directly using event_details.id from ops learning
             
 
             
@@ -121,48 +121,65 @@ class RRCapacityQuestionsView(APIView):
         with open('rr_parsed_excel.json', 'r', encoding='utf-8') as f:
             return json.load(f)
 
-    def _fetch_events_from_appeals(self, ops_learning_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Fetch events from appeal codes found in ops learning data."""
-        appeal_events = []
-        appeal_codes = set()
-        
+    def _fetch_events_from_ops_learning(self, ops_learning_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Fetch events directly using event_details.id from ops learning data."""
+        events = []
+        seen_event_ids = set()
         
         # Handle None or empty ops_learning_data
         if not ops_learning_data:
-            return appeal_events
+            return events
         
-        for learning in ops_learning_data:
-            appeal_info = learning.get('appeal', {})
-            appeal_code = appeal_info.get('code')
-            if appeal_code and appeal_code not in appeal_codes:
-                appeal_codes.add(appeal_code)
+        for i, learning in enumerate(ops_learning_data):
+            # SAFETY CHECK: Ensure learning is a dictionary
+            if not isinstance(learning, dict):
+                continue
                 
-                # Fetch event by appeal code
-                try:
-                    params = {"appeal_code": appeal_code, "limit": 1}
-                    url = f"{self.base_url}/event/"
-                    response = httpx.get(url, params=params, timeout=10.0)
-                    response.raise_for_status()
-                    data = response.json()
-                    events = data.get("results", [])
+            appeal_info = learning.get('appeal', {})
+            if not isinstance(appeal_info, dict):
+                continue
+                
+            # Get event details from appeal
+            event_details = appeal_info.get('event_details', {})
+            if not isinstance(event_details, dict):
+                continue
+                
+            event_id = event_details.get('id')
+            appeal_code = appeal_info.get('code')
+            country_info = appeal_info.get('country', {})
+            
+            if not event_id:
+                continue
+                
+            if event_id in seen_event_ids:
+                continue
+                
+            seen_event_ids.add(event_id)
+            
+            # Fetch event directly by ID
+            try:
+                url = f"{self.base_url}/event/{event_id}/"
+                response = httpx.get(url, timeout=10.0)
+                response.raise_for_status()
+                event = response.json()
+                
+                if event:
+                    # Add source information to the event
+                    event["source_note"] = f"Event from ops learning (Appeal: {appeal_code}, Event ID: {event_id})"
+                    event["appeal_source"] = appeal_code
+                    event["event_source_id"] = event_id
+                    events.append(event)
                     
-                    if events:
-                        event = events[0]
-                        # Add source information to the event
-                        event["source_note"] = f"Event from appeal {appeal_code} (ops learning source)"
-                        event["appeal_source"] = appeal_code
-                        appeal_events.append(event)
-                        
-                except Exception:
-                    continue  # Skip failed requests
+            except Exception as e:
+                continue  # Skip failed requests
         
-        return appeal_events
+        return events
 
     def _fetch_ops_learning_data(self, country_id: int, disaster_type_id: int, target_count: int = 10) -> List[Dict[str, Any]]:
         """
         Fetch ops-learning data using GO's new API filters with two-stage approach.
         
-        STAGE 1: Fetch up to 10 using both appeal_code__country and appeal_code__dtype
+        STAGE 1: Fetch up to 10 using both appeal_code__country and appeal_code__dtype__in
         STAGE 2: If fewer results than desired, fetch additional using only appeal_code__country
         
         Returns empty list if no data found in either stage.
@@ -172,6 +189,34 @@ class RRCapacityQuestionsView(APIView):
         
         # STAGE 1: Fetch with both country and disaster type filters
         primary_batch = self._fetch_ops_learning(country_id, disaster_type_id, limit=10)
+        print(f"=== DEBUG: PRIMARY BATCH ===")
+        print(f"Primary batch count: {len(primary_batch)}")
+        for i, learning in enumerate(primary_batch[:3]):
+            appeal_info = learning.get('appeal', {})
+            if isinstance(appeal_info, dict):
+                country_info = appeal_info.get('country', {})
+                dtype_info = appeal_info.get('dtype', {})
+                if isinstance(country_info, dict):
+                    country_name = country_info.get('name', 'N/A')
+                    country_id_str = str(country_info.get('id', 'N/A'))
+                else:
+                    country_name = f"Country ID: {country_info}" if country_info else 'N/A'
+                    country_id_str = str(country_info) if country_info else 'N/A'
+                
+                if isinstance(dtype_info, dict):
+                    dtype_name = dtype_info.get('name', 'N/A')
+                    dtype_id_str = str(dtype_info.get('id', 'N/A'))
+                else:
+                    dtype_name = f"Disaster Type ID: {dtype_info}" if dtype_info else 'N/A'
+                    dtype_id_str = str(dtype_info) if dtype_info else 'N/A'
+                
+                print(f"Primary {i+1}: Country: {country_name} (ID: {country_id_str}), "
+                      f"Disaster Type: {dtype_name} (ID: {dtype_id_str})")
+            else:
+                # Handle integer appeal IDs in debug output
+                print(f"Primary {i+1}: Appeal ID: {appeal_info} (no detailed info available)")
+        print("=== END PRIMARY DEBUG ===")
+        
         primary_labeled = [
             {**l, "source_note": "This insight was built off similar disasters from the same country."}
             for l in primary_batch
@@ -184,21 +229,57 @@ class RRCapacityQuestionsView(APIView):
         # Add primary results and track their appeal codes
         for learning in primary_labeled:
             appeal_info = learning.get('appeal', {})
-            appeal_code = appeal_info.get('code')
+            if isinstance(appeal_info, dict):
+                appeal_code = appeal_info.get('code')
+            else:
+                # Handle integer appeal IDs
+                appeal_code = str(appeal_info) if appeal_info else None
+            
             if appeal_code and appeal_code not in seen_appeal_codes:
                 seen_appeal_codes.add(appeal_code)
                 deduplicated_results.append(learning)
             elif not appeal_code:  # Include entries without appeal codes
                 deduplicated_results.append(learning)
         
-        # STAGE 2: If we need more results, fetch country-only data
+        # STAGE 2: If we need more results, fetch country-only data BUT filter by disaster type in code
         if len(deduplicated_results) < 10:
             remaining_needed = 10 - len(deduplicated_results)
-            secondary_batch = self._fetch_ops_learning_by_country_only(country_id, limit=remaining_needed * 2)  # Fetch extra for deduplication
+            secondary_batch = self._fetch_ops_learning_by_country_only(country_id, limit=remaining_needed * 4)  # Fetch more for filtering
+            
+            # Filter secondary batch to only include the specific disaster type
+            filtered_secondary = []
+            print(f"=== DEBUG: SECONDARY BATCH FILTERING ===")
+            print(f"Secondary batch count: {len(secondary_batch)}")
+            print(f"Looking for disaster type ID: {disaster_type_id}")
+            
+            for learning in secondary_batch:
+                appeal_info = learning.get('appeal', {})
+                if isinstance(appeal_info, dict):
+                    appeal_dtype = appeal_info.get('dtype', {})
+                    if isinstance(appeal_dtype, dict):
+                        dtype_id = appeal_dtype.get('id')
+                        country_info = appeal_info.get('country', {})
+                        if isinstance(country_info, dict):
+                            country_id_str = str(country_info.get('id', 'N/A'))
+                        else:
+                            country_id_str = str(country_info) if country_info else 'N/A'
+                        print(f"Checking: Country ID {country_id_str}, Disaster Type ID {dtype_id}")
+                        if dtype_id == disaster_type_id:
+                            filtered_secondary.append(learning)
+                            print(f"  -> MATCH: Added to filtered results")
+                        else:
+                            print(f"  -> SKIP: Disaster type mismatch")
+                    else:
+                        print(f"  -> SKIP: No disaster type info")
+                else:
+                    print(f"  -> SKIP: No appeal info")
+            
+            print(f"Filtered secondary count: {len(filtered_secondary)}")
+            print("=== END SECONDARY DEBUG ===")
             
             secondary_labeled = [
-                {**l, "source_note": "This insight was built off other disasters from the same country."}
-                for l in secondary_batch
+                {**l, "source_note": "This insight was built off similar disasters from the same country."}
+                for l in filtered_secondary
             ]
             
             # Add secondary results, avoiding duplicates by appeal code
@@ -207,7 +288,12 @@ class RRCapacityQuestionsView(APIView):
                     break
                     
                 appeal_info = learning.get('appeal', {})
-                appeal_code = appeal_info.get('code')
+                if isinstance(appeal_info, dict):
+                    appeal_code = appeal_info.get('code')
+                else:
+                    # Handle integer appeal IDs
+                    appeal_code = str(appeal_info) if appeal_info else None
+                
                 if appeal_code and appeal_code not in seen_appeal_codes:
                     seen_appeal_codes.add(appeal_code)
                     deduplicated_results.append(learning)
@@ -222,10 +308,10 @@ class RRCapacityQuestionsView(APIView):
         return deduplicated_results[:10]
 
     def _fetch_ops_learning(self, country_id: int, disaster_type_id: int, limit: int = 10) -> List[Dict[str, Any]]:
-        """Fetch validated ops-learning data filtered by appeal country and disaster type using GO's new API filters."""
+        """Fetch validated ops-learning data filtered by appeal country and disaster type using GO's correct API filters."""
         params: Dict[str, Any] = {
-            "appeal_code__country": country_id,
-            "appeal_code__dtype": disaster_type_id,
+            "appeal_code__country": str(country_id),
+            "appeal_code__dtype__in": str(disaster_type_id),
             "limit": limit,
             "is_validated": "true"
         }
@@ -241,7 +327,7 @@ class RRCapacityQuestionsView(APIView):
     def _fetch_ops_learning_by_country_only(self, country_id: int, limit: int = 10) -> List[Dict[str, Any]]:
         """Fetch validated ops-learning data filtered only by appeal country (fallback strategy)."""
         params: Dict[str, Any] = {
-            "appeal_code__country": country_id, 
+            "appeal_code__country": str(country_id),
             "limit": limit,
             "is_validated": "true"
         }
@@ -265,6 +351,10 @@ class RRCapacityQuestionsView(APIView):
             ops_learning_data = []
         
         for question in questions_data:
+            # Skip non-dictionary entries to avoid .get() errors
+            if not isinstance(question, dict):
+                continue
+                
             # Create a copy of the question
             processed_question = question.copy()
             
@@ -390,6 +480,10 @@ class RRCapacityQuestionsView(APIView):
 
         # First pass: write all cells and track area changes
         for question in questions_data:
+            # Skip non-dictionary entries to avoid .get() errors
+            if not isinstance(question, dict):
+                continue
+                
             area = question.get("Area", "")
             
             # If area is null/empty, use the previous area
@@ -646,7 +740,15 @@ class RRCapacityQuestionsView(APIView):
                 disaster_type = dtype_info.get('name') if isinstance(dtype_info, dict) else event.get('dtype_name', 'Unknown')
                 
                 countries = event.get('countries', [])
-                location = countries[0].get('name') if countries else event.get('country_name', 'Unknown')
+                if countries:
+                    first_country = countries[0]
+                    if isinstance(first_country, dict):
+                        location = first_country.get('name', 'Unknown')
+                    else:
+                        # Handle integer country IDs
+                        location = f"Country ID: {first_country}"
+                else:
+                    location = event.get('country_name', 'Unknown')
                 
                 source_context = event.get('source_note', 'Appeal-driven event')
                 
@@ -686,8 +788,17 @@ class RRCapacityQuestionsView(APIView):
                     learning_text = learning_text[:80] + "..."
                 
                 appeal_info = learning.get('appeal', {})
-                appeal_code = appeal_info.get('code', 'N/A')
-                event_name = appeal_info.get('event_details', {}).get('name', 'N/A')
+                if isinstance(appeal_info, dict):
+                    appeal_code = appeal_info.get('code', 'N/A')
+                    event_details = appeal_info.get('event_details', {})
+                    if isinstance(event_details, dict):
+                        event_name = event_details.get('name', 'N/A')
+                    else:
+                        event_name = 'N/A'
+                else:
+                    # Handle integer appeal IDs
+                    appeal_code = str(appeal_info) if appeal_info else 'N/A'
+                    event_name = 'N/A'
                 document = learning.get('document_name', 'N/A')
                 source_context = learning.get('source_note', 'Operational learning')
                 
