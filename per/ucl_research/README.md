@@ -20,16 +20,16 @@ per/ucl_research/
 ## API Endpoints Overview
 
 ### Flow 1.1: IFRCEventListView - Previous Crises Insights
-**Endpoint:** `GET /api/v2/ifrc-events/?country={country_id}&disaster_type={disaster_type_id}`
+**Endpoint:** `GET /api/v1/ucl/previous-crises-insights/?country={country_id}&disaster_type={disaster_type_id}`
 
 ### Flow 1.2: RRCapacityQuestionsView - Rapid Response Excel File Generation
-**Endpoint:** `GET /api/v2/rr-capacity-questions/?country={country_id}&disaster_type={disaster_type_id}`
+**Endpoint:** `GET /api/v1/ucl/rapid-response-capacity-questions/?country={country_id}&disaster_type={disaster_type_id}`
 
 ### Flow 2.1: PerDrefLLMSummaryView - DREF Economic Sectors
-**Endpoint:** `GET /api/v2/per-dref-summary/?id={event_id}`
+**Endpoint:** `GET /api/v1/ucl/dref-summary/?id={event_id}`
 
 ### Flow 2.2: PerDrefSituationalOverviewView - DREF Situational Overview
-**Endpoint:** `GET /api/v2/per-dref-situational-overview/?id={event_id}`
+**Endpoint:** `GET /api/v1/ucl/dref-situational-overview/?id={event_id}`
 
 ---
 
