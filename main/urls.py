@@ -68,7 +68,12 @@ from registrations import drf_views as registration_views
 from registrations.drf_views import RegistrationView
 from registrations.views import UserExternalTokenViewset, ValidateUser, VerifyEmail
 
-# from graphene_django.views import GraphQLView  # will be needed later
+from per.ucl_research.ucl_views import (
+    PreviousCrisesInsightsView,
+    RapidResponseCapacityQuestionsView,
+    DrefSummaryView,
+    DrefSituationalOverviewView
+)
 
 router = routers.DefaultRouter()
 
@@ -184,7 +189,7 @@ admin.site.site_header = "IFRC Go administration"
 admin.site.site_title = "IFRC Go admin"
 
 urlpatterns = [
-    url(r"^api/v2/ifrc-events/", IFRCEventListView.as_view()),
+    url(r"^api/v2/ifrc-events/", IFRCEventListView.as_view()), # REMOVE
     # url(r"^api/v1/es_search/", EsPageSearch.as_view()),
     url(r"^api/v1/search/", HayStackSearch.as_view()),
     url(r"^api/v1/es_health/", EsPageHealth.as_view()),
@@ -246,6 +251,13 @@ urlpatterns = [
     ),
     path(".well-known/openapi.yml", serve, {"document_root": settings.STATICFILES_DIRS[0], "path": "well-known/openapi.yml"}),
     path("i18n/", include("django.conf.urls.i18n")),
+
+    # PER UCL Research Views
+    url(r"^api/v1/ucl/previous-crises-insights/", PreviousCrisesInsightsView.as_view()),
+    url(r"^api/v1/ucl/rapid-response-capacity-questions/", RapidResponseCapacityQuestionsView.as_view()),
+    url(r"^api/v1/ucl/dref-summary/", DrefSummaryView.as_view()),
+    url(r"^api/v1/ucl/dref-situational-overview/", DrefSituationalOverviewView.as_view()),
+
     # Enums
     url(r"^api/v2/global-enums/", api_views.GlobalEnumView.as_view(), name="global_enums"),
     # Docs

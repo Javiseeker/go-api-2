@@ -763,6 +763,8 @@ class OpsLearningPromptResponseCache(models.Model):
         SECONDARY = 2, _("Secondary")
         SECTOR = 3, _("Sector")
         COMPONENT = 4, _("Component")
+        PREVIOUS_CRISES = 5, _("Previous Crises")
+        SITUATIONAL_OVERVIEW = 6, _("Situational Overview")
 
     prompt_hash = models.CharField(verbose_name=_("used prompt hash"), max_length=32)
     prompt = models.TextField(verbose_name=_("used prompt"), null=True, blank=True)
