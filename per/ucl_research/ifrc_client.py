@@ -218,7 +218,7 @@ class IFRCAPIClient:
         self, 
         country_id: Optional[int] = None, 
         disaster_type_id: Optional[int] = None,
-        **extra_params
+        max_results: int = 6
     ) -> List[Dict[str, Any]]:
         """
         Get operational learning data with filtering.
@@ -227,26 +227,26 @@ class IFRCAPIClient:
         Args:
             country_id: Filter by country ID
             disaster_type_id: Filter by disaster type ID
-            **extra_params: Additional query parameters
+            max_results: Maximum number of results to return
             
         Returns:
             List of operational learning dictionaries
         """
         try:
-            params = {}
-            if country_id is not None:
-                params['appeal_code__country'] = country_id
+            params = {
+            "is_validated": "true",
+            "limit": max_results,
+            "appeal_code__country": country_id,
+            }
             if disaster_type_id is not None:
-                params['appeal_code__dtype'] = disaster_type_id
-            
-            # Add any extra parameters
-            params.update(extra_params)
+                # actually filter by the nested event dtype field
+                params["appeal__event_details__dtype"] = disaster_type_id
             
             data = await self._make_request(
                 method="GET",
                 endpoint="/api/v2/ops-learning/",
                 params=params,
-                data_type=f"ops learning (country={country_id}, dtype={disaster_type_id})"
+                data_type="ops learning"
             )
             return data.get('results', [])
             

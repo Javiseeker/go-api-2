@@ -135,7 +135,7 @@ class PreviousCrisesInsightsView(BaseUCLView):
         """Process previous crises insights synchronously with caching"""
         async with IFRCAPIClient() as client:
             # Get primary ops learning (country + disaster type)
-            primary = await client.get_ops_learning(country_id, disaster_type_id, is_validated="true", limit=6)
+            primary = await client.get_ops_learning(country_id, disaster_type_id, max_results=6)
             primary_labeled = [
                 {**l, "source_note": "This insight was built off similar disasters from the same country."}
                 for l in primary
@@ -143,9 +143,9 @@ class PreviousCrisesInsightsView(BaseUCLView):
             
             # Get secondary ops learning (country only) as fallback
             if not primary:
-                secondary = await client.get_ops_learning(country_id, None, is_validated="true", limit=6)
+                secondary = await client.get_ops_learning(country_id, None, max_results=6)
             else:
-                all_country = await client.get_ops_learning(country_id, None, is_validated="true", limit=20)
+                all_country = await client.get_ops_learning(country_id, None, max_results=20)
                 primary_ids = {p['id'] for p in primary}
                 secondary = [l for l in all_country if l['id'] not in primary_ids]
             
