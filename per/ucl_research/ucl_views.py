@@ -287,8 +287,8 @@ class PreviousCrisesInsightsView(BaseUCLView):
             'created_at': learning.get('created_at'),
             'modified_at': learning.get('modified_at'),
             'appeal_code': learning.get('appeal_code'),
-            'appeal_name': learning.get('appeal', {}).get('name'),
-            'event_id': learning.get('appeal', {}).get('event_details', {}).get('id'),
+            'appeal_name': (learning.get('appeal') or {}).get('name'),
+            'event_id':    ((learning.get('appeal') or {}).get('event_details') or {}).get('id'),
         }
 
     def _generate_ai_summary(self, structured_data):
@@ -307,29 +307,23 @@ class PreviousCrisesInsightsView(BaseUCLView):
 
         # 2) System prompt with an explicit example
         system_message = {
-                "role": "system",
-                "content": (
-                    "You MUST return a JSON array of up to 6 objects, each with a clear suggestion at the end. Each insight **must** merge "
-                    "between **one** and **three** distinct learnings inclusive and be very detailed. "
-                    "The tone should be to help with a current similar crisis.  "
-                    "For each insight also include a short list of 1-2 clear **recommendations** "
-                    "labeled 'recommendations' that follow from the insight.\n\n"
-                    "Example of correct output:\n\n"
-                    "[\n"
-                    "  {\n"
-                    "    \"title\": \"Customizing Data Tools\",\n"
-                    "    \"insight\": \"...\",\n"
-                    "    \"recommendations\": [\n"
-                    "       \"Do X within the first week of response\",\n"
-                    "       \"Train local staff on Y tool\"\n"
-                    "    ],\n"
-                    "    \"source_note\": \"…\",\n"
-                    "    \"metadata\": { … }\n"
-                    "  }\n"
-                    "]\n\n"
-                    "Return ONLY the JSON array (no markdown)."
-                )
-            }
+            "role": "system",
+            "content": (
+                "You MUST return a JSON array of up to 6 objects, each merging between one and three distinct learnings into a single, detailed insight. Include the source you are referencing in the insight "
+                "The tone should be to help with a current similar crisis. It should be at least 4 sentences for the insight "
+                "Include for each insight a key called `source_note` and a `metadata.operational_learning_source` array of {id,code,name}.  "
+                "Example of correct output:\n\n"
+                "[\n"
+                "  {\n"
+                "    \"title\": \"Customizing Data Tools\",\n"
+                "    \"insight\": \"...\",\n"
+                "    \"source_note\": \"…\",\n"
+                "    \"metadata\": { … }\n"
+                "  }\n"
+                "]\n\n"
+                "Return ONLY the JSON array (no markdown)."
+            )
+        }
 
         # 3) Build the user-visible list of learnings
         learnings_block = "\n".join(
@@ -341,9 +335,8 @@ class PreviousCrisesInsightsView(BaseUCLView):
             "role": "user",
             "content": (
                 "Here are the learnings:\n" + learnings_block +
-                "\n\nThe language should be very detailed. Please synthesize up to 6 actionable insights by combining any learnings that share a theme. Explain how the insight is buiilt using the sources and appeal codes. Also make sure you use event details such as description, disaster and country to help with generating the insight. "
-                "Each insight must draw on at least two of the above. If the insight is based off different disasters, then try to link it to the current disaster. "
-                "Then for each insight, under a key called `recommendations`, list 1–2 clear next steps that an operational team could take.  "
+                "\n\nPlease synthesize up to 6 actionable insights by combining any learnings that share a theme. "
+                "Explain how each insight builds on the sources and appeal codes, and enrich them with the event details (description, disaster type, country).  "
                 "In `metadata.operational_learning_source` list every source you used (with its `id`, `code`, and `name`).  "
                 "Make each insight no more than 5 sentences, include the country name, and return only valid JSON."
             )
@@ -444,7 +437,7 @@ class PreviousCrisesInsightsView(BaseUCLView):
             "content": (
                 "Generate RR questions for each insight. "
                 "Match each insight to the most relevant 'Area' in the template JSON, "
-                "derive 1–2 focused RR questions from that Area's 'Critical Questions', "
+                "generate 1–2 focused RR questions based on that Area's 'Critical Questions', "
                 "and return a JSON array of objects with keys: "
                 "'title', 'insight', 'area', 'rr_questions'."
             )
