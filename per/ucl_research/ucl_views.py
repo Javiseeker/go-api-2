@@ -309,7 +309,9 @@ class PreviousCrisesInsightsView(BaseUCLView):
         system_message = {
             "role": "system",
             "content": (
-                "You MUST return a JSON array of up to 6 objects, each merging between two and three distinct learnings into a single, detailed insight. You MUST include the source of learning you are referencing within the insight "
+                "You MUST return a JSON array of up to 6 objects, each merging between two and three distinct learnings into a single, detailed insight."
+                "You MUST include the source of learning you are referencing within the insight "
+                "Prioritise showing insights that are based on learnings that have a matching disaster type. "
                 "The tone should be to help with a current similar crisis. "
                 "Include for each insight a key called `source_note` and a `metadata.operational_learning_source` array of {id,code,name}.  "
                 "Example of correct output:\n\n"
@@ -337,6 +339,7 @@ class PreviousCrisesInsightsView(BaseUCLView):
                 "Here are the learnings:\n" + learnings_block +
                 "\n\nPlease synthesize up to 6 actionable insights by combining any learnings that share a theme. "
                 "Explain how each insight builds on the sources and appeal codes, and enrich them with the event details (description, disaster type, country).  "
+                "You MUST include the source of learning you are referencing within the insight "
                 "In `metadata.operational_learning_source` list every source you used (with its `id`, `code`, and `name`).  "
                 "Make each insight no less than 4 sentences, include the country name, and return only valid JSON."
             )
