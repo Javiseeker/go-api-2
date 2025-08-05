@@ -290,3 +290,37 @@ For more info checkout [GO-SSO](./docs/go-sso.md)
 ## Playwright exports
 
 For more info checkout [Playwright exports](./docs/playwright-exports.md)
+
+## UCL Research API Updates
+
+Recent improvements to the UCL Research API endpoints for operational learning and analysis:
+
+### Rapid Response Capacity Questions Refactor
+
+The `RapidResponseCapacityQuestionsView` has been refactored for better maintainability and separation of concerns:
+
+- **Created** `per/ucl_research/rapid_response_parser.py` - Dedicated parser class for RR capacity questions processing
+- **Extracted** complex logic from the view into the parser, including:
+  - Operational learning data fetching with two-stage approach (country+disaster type, then country-only fallback)
+  - Excel generation with proper formatting, area color coding, and source tracking
+  - AI-powered question processing using Azure OpenAI services
+- **Updated** `RapidResponseCapacityQuestionsView` to use the new parser via async/await pattern
+- **Maintained** full compatibility with existing API contracts and caching mechanisms
+
+### IFRC Client API Parameter Fix
+
+Fixed a critical bug in `per/ucl_research/ifrc_client.py` affecting operational learning data retrieval:
+
+- **Problem**: `PreviousCrisesInsightsView` was not obtaining operational learnings due to incorrect API parameter
+- **Root Cause**: The `ifrc_client.py` was using `appeal__event_details__dtype` parameter, but analysis of the working `rr_endpoint.py` revealed that the correct ops-learning API parameter is `appeal_code__dtype__in`
+- **Solution**: Updated the `get_ops_learning` method to use the correct API parameter `appeal_code__dtype__in` as documented in the working RR endpoint
+- **Impact**: `PreviousCrisesInsightsView` now successfully retrieves operational learning data using the correct API parameter
+
+**Note**: The `IFRCEventListView` was using `appeal__event_details__dtype` which may have been working due to other compensating logic, but the canonical parameter for ops-learning API is `appeal_code__dtype__in`.
+
+### Architecture Improvements
+
+- **Unified HTTP Client**: All UCL Research views now use the centralized `IFRCAPIClient` for consistent API interactions
+- **Async/Await Pattern**: Improved performance and maintainability with proper async handling
+- **Error Handling**: Enhanced error handling with retry logic and comprehensive logging
+- **Code Separation**: Better separation of concerns with dedicated parser classes

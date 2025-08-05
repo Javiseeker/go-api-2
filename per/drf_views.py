@@ -127,7 +127,7 @@ from .serializers import (
     UserPerCountrySerializer,
 )
 import json
-from per.ops_learning_summary3 import DrefSummaryTask
+from per.ucl_research.ops_learning_summary4 import DrefSummaryTask
 class PERDocsFilter(filters.FilterSet):
     id = filters.NumberFilter(field_name="id", lookup_expr="exact")
 
