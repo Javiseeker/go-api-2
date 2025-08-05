@@ -149,7 +149,6 @@ class PreviousCrisesInsightsView(BaseUCLView):
     def _process_previous_crises_insights(
         self, country_id: int, disaster_type_id: int, cache_key: str
     ) -> Response:
-        # 1) fetch primary & secondary learnings
         primary = self._fetch_ops_learning(country_id, disaster_type_id)
         if not primary:
             secondary = self._fetch_ops_learning(country_id, None)
@@ -160,7 +159,6 @@ class PreviousCrisesInsightsView(BaseUCLView):
 
         logger.debug(f"[FALLBACK] primary_count={len(primary)}, secondary_count={len(secondary)}")
 
-        # 2) combine & limit
         combined = (primary + secondary)[:6]
         if not combined:
             return Response({
@@ -168,7 +166,6 @@ class PreviousCrisesInsightsView(BaseUCLView):
                 "fallback_note": "No operational learnings have been recorded in the system for this context yet. You're welcome to check the Ops Learning dashboard or evaluations database."
             }, status=drf_status.HTTP_200_OK)
 
-        # 3) minimal entries + event fetch
         processed_learnings = [self._create_learning_entry(l) for l in combined]
         import httpx
         for pl in processed_learnings:
@@ -198,13 +195,8 @@ class PreviousCrisesInsightsView(BaseUCLView):
                 "description": event.get("description") or event.get("summary") or ""
             }
 
-        # 4) AI insights
         ai_insights = self._generate_ai_summary([{"related_ops_learning": processed_learnings}])
-
-        # 5) RR questions
         rr_results = self._generate_rr_questions([{"related_ops_learning": ai_insights}])
-
-        # 6) merge by title
         rr_by_title = {r["title"]: r for r in rr_results}
         merged = []
         for obj in ai_insights:
@@ -240,7 +232,6 @@ class PreviousCrisesInsightsView(BaseUCLView):
             "appeal_code__country": country_id,
         }
         if disaster_type_id is not None:
-            # actually filter by the nested event dtype field
             params["appeal__event_details__dtype"] = disaster_type_id
 
         resp = self._make_api_request(
@@ -299,13 +290,11 @@ class PreviousCrisesInsightsView(BaseUCLView):
         if not hasattr(self.azure_client, 'client') or not self.azure_client.client:
             return []
 
-        # 1) Build flat list of learnings
         all_learnings = [l for e in structured_data for l in e.get('related_ops_learning', [])][:20]
 
         def truncate(text: str, max_chars: int = 500) -> str:
             return text if len(text) <= max_chars else text[:max_chars] + "..."
 
-        # 2) System prompt with an explicit example
         system_message = {
             "role": "system",
             "content": (
@@ -326,8 +315,6 @@ class PreviousCrisesInsightsView(BaseUCLView):
                 "Return ONLY the JSON array (no markdown)."
             )
         }
-
-        # 3) Build the user-visible list of learnings
         learnings_block = "\n".join(
             f"- ID {l['id']} | Code {l['appeal_code']} | Name {l['appeal_name']} | {l['document_name']}:\n"
             f"  {truncate(l['learning_text'])}"
@@ -344,8 +331,6 @@ class PreviousCrisesInsightsView(BaseUCLView):
                 "Make each insight no less than 4 sentences, include the country name, and return only valid JSON."
             )
         }
-
-        # 4) Call OpenAI using enhanced client
         raw = self.azure_client.get_response([system_message, user_message], cache_prefix="previous_crises")
 
         if not raw:
@@ -398,7 +383,6 @@ class PreviousCrisesInsightsView(BaseUCLView):
                         "event_id": l.get("event_id"),
                     })
 
-            # New: simple, descriptive source_note
             insight_source_note = (
                 f"This insight was synthesized from {len(srcs)} operational-learning source"
                 + ("s." if len(srcs) != 1 else ".")
@@ -423,13 +407,11 @@ class PreviousCrisesInsightsView(BaseUCLView):
     def _generate_rr_questions(self, structured_data):
         import json
 
-        # AI insights come in as related_ops_learning entries:
         ai_insights = structured_data[0].get("related_ops_learning", [])
 
         def truncate(text: str, n: int = 100) -> str:
             return text if len(text) <= n else text[:n] + "…"
 
-        # Build the prompt using title + insight, not ID
         insights_block = "\n".join(
             f"- {truncate(l.get('title','Untitled'))}: {truncate(l.get('insight',''))}"
             for l in ai_insights
@@ -485,8 +467,7 @@ class RapidResponseCapacityQuestionsView(BaseUCLView):
         """Process RR capacity questions and return Excel file URL"""
         
         start_time = datetime.now()
-        
-        # Validate parameters
+    
         params, error_response = self._validate_country_disaster_params(request)
         if error_response:
             return error_response
