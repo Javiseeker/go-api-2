@@ -76,6 +76,7 @@ class PerformanceMonitor:
         cache.set(cache_key, existing_data, timeout=86400)  # 24 hours
 
 
+# maybe we want to delete this one.
 class EnhancedAzureOpenAiChat:
     """Enhanced Azure OpenAI client with improved caching and error handling"""
     
@@ -131,7 +132,7 @@ class EnhancedAzureOpenAiChat:
         
         return None
 
-
+# maybe we want to get rid of this one?
 class BaseOpsLearningTask:
     """Base class with common utilities for operational learning tasks"""
     
