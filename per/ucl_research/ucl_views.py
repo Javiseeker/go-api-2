@@ -200,10 +200,23 @@ class PreviousCrisesInsightsView(BaseUCLView):
                 )
             }, status=drf_status.HTTP_200_OK)
         
-        # Cache result for future requests
-        BaseAITask.set_cached_result(cache_key, ai_summary)
+        # Calculate confidence score
+        confidence_score = BaseAITask.calculate_confidence_score(
+            ai_response=str(ai_summary),
+            source_data_count=len(combined_learning),
+            has_specific_facts=any('based on' in str(item).lower() for item in ai_summary if isinstance(item, dict)),
+            response_length=len(str(ai_summary))
+        )
         
-        return Response({"ai_structured_summary": ai_summary}, status=drf_status.HTTP_200_OK)
+        response_data = {
+            "ai_structured_summary": ai_summary,
+            "confidence_score": confidence_score
+        }
+        
+        # Cache result for future requests
+        BaseAITask.set_cached_result(cache_key, response_data)
+        
+        return Response(response_data, status=drf_status.HTTP_200_OK)
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -265,7 +278,21 @@ class RapidResponseCapacityQuestionsView(BaseUCLView):
             blob_url = parser.process_rr_capacity_questions_with_data(
                 country_id, disaster_type_id, cache_key, ops_learning_data, events_data
             )
-            return Response({"file_url": blob_url}, status=drf_status.HTTP_200_OK)
+            
+            # Calculate confidence score
+            confidence_score = BaseAITask.calculate_confidence_score(
+                ai_response=f"Excel file generated with {len(ops_learning_data)} ops learning entries",
+                source_data_count=len(ops_learning_data) + len(events_data),
+                has_specific_facts=len(ops_learning_data) > 0,
+                response_length=100  # Standard length for file generation
+            )
+            
+            response_data = {
+                "file_url": blob_url,
+                "confidence_score": confidence_score
+            }
+            
+            return Response(response_data, status=drf_status.HTTP_200_OK)
             
         except Exception as e:
             logger.error(f"Error in RR capacity parser: {e}", exc_info=True)
@@ -534,11 +561,20 @@ class DrefSummaryView(BaseUCLView):
             
             # Step 7: Prepare response data (exact same format)
             sectors_data = summaries.get("sectors", [])
+            
+            # Step 8: Calculate confidence score
+            confidence_score = BaseAITask.calculate_confidence_score(
+                ai_response=str(summaries.get("operational_summary", "")),
+                source_data_count=len(sectors_data),
+                has_specific_facts=len(str(summaries.get("operational_summary", ""))) > 100,
+                response_length=len(str(summaries.get("operational_summary", "")))
+            )
             summary_data = {
                 "operational_summary": summaries.get("operational_summary", ""),
                 "sectors": sectors_data,
                 "dref_type": dref_data.type_of_dref_display if hasattr(dref_data, 'type_of_dref_display') else "",
                 "dref_onset": dref_data.type_of_onset_display if hasattr(dref_data, 'type_of_onset_display') else "",
+                "confidence_score": confidence_score,
                 "metadata": {
                     "dref_id": dref_data.id,
                     "dref_title": dref_data.title,
@@ -668,9 +704,18 @@ class DrefSituationalOverviewView(BaseUCLView):
                     "event_id": event_id
                 }, status=drf_status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-            # Step 7: Prepare response data (exact same format as original)
+            # Step 7: Calculate confidence score
+            confidence_score = BaseAITask.calculate_confidence_score(
+                ai_response=str(situational_overview),
+                source_data_count=len(getattr(dref_data, 'operational_update_details', [])),
+                has_specific_facts='based on' in str(situational_overview).lower(),
+                response_length=len(str(situational_overview))
+            )
+            
+            # Step 8: Prepare response data (exact same format as original)
             response_data = {
                 "situational_overview": situational_overview,
+                "confidence_score": confidence_score,
                 "metadata": {
                     # Event-focused information (primary for situational overview)
                     "event_id": event_id,

@@ -51,12 +51,18 @@ class PerDrefLLMSummarySerializer(serializers.Serializer):
     dref_type: Type of DREF operation
     dref_onset: Type of disaster onset
     metadata: Additional information about the DREF
+    confidence_score: AI confidence level (high/medium/low)
     """
     operational_summary = serializers.CharField(required=False, allow_blank=True)
     sectors = PerDrefLLMSummarySectorSerializer(many=True, required=False)
     dref_type = serializers.CharField(required=False, allow_blank=True)
     dref_onset = serializers.CharField(required=False, allow_blank=True)
     metadata = PerDrefLLMSummaryMetadataSerializer(required=False)
+    confidence_score = serializers.ChoiceField(
+        choices=['high', 'medium', 'low'], 
+        default='medium', 
+        required=False
+    )
 
 
 class PerDrefSituationalOverviewMetadataSerializer(serializers.Serializer):
@@ -84,9 +90,15 @@ class PerDrefSituationalOverviewSerializer(serializers.Serializer):
     
     situational_overview: 5-line paragraph summarizing the event situation
     metadata: Event and DREF context information
+    confidence_score: AI confidence level (high/medium/low)
     """
     situational_overview = serializers.CharField(required=False, allow_blank=True)
     metadata = PerDrefSituationalOverviewMetadataSerializer(required=False)
+    confidence_score = serializers.ChoiceField(
+        choices=['high', 'medium', 'low'], 
+        default='medium', 
+        required=False
+    )
 
 
 class IFRCEventLearningSerializer(serializers.Serializer):
@@ -113,9 +125,19 @@ class IFRCEventSummarySerializer(serializers.Serializer):
         required=False
     )
     fallback_note = serializers.CharField(required=False, allow_blank=True)
+    confidence_score = serializers.ChoiceField(
+        choices=['high', 'medium', 'low'], 
+        default='medium', 
+        required=False
+    )
 
 
 class RRCapacityQuestionsResponseSerializer(serializers.Serializer):
     """Serializer for RR Capacity Questions response"""
     file_url = serializers.URLField()
     cached = serializers.BooleanField(default=False)
+    confidence_score = serializers.ChoiceField(
+        choices=['high', 'medium', 'low'], 
+        default='medium', 
+        required=False
+    )
