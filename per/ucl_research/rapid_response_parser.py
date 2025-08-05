@@ -26,7 +26,7 @@ from openpyxl.styles import Font, PatternFill, Alignment
 from api.models import Country  
 from per.ucl_research.ifrc_client import IFRCAPIClient
 from per.ucl_research.blob_upload import upload_to_blob
-from per.ucl_research.ops_learning_summary4 import RRCapacityTask
+from per.ucl_research.ops_learning_summary4 import RRCapacityTask, BaseAITask
 
 
 class RapidResponseCapacityParser:
@@ -38,11 +38,13 @@ class RapidResponseCapacityParser:
         self.ifrc_client = IFRCAPIClient()
         self.response_service = RRCapacityTask()
     
-    def process_rr_capacity_questions(
+    def process_rr_capacity_questions_with_data(
         self, 
         country_id: int, 
         disaster_type_id: int, 
-        cache_key: str
+        cache_key: str,
+        ops_learning_data: List[Dict[str, Any]],
+        events_data: List[Dict[str, Any]]
     ) -> str:
         """
         Process RR capacity questions and return blob URL for Excel file.
@@ -60,8 +62,7 @@ class RapidResponseCapacityParser:
         # Load questions data
         questions_data = self._load_questions_data()
         
-        # Fetch operational learning and events data using asyncio.run
-        ops_learning_data, events_data = asyncio.run(self._fetch_async_data(country_id, disaster_type_id))
+        # Data is now passed from the view
         
         # Process questions and fill missing fields
         processed_questions = self._process_questions(
@@ -84,160 +85,19 @@ class RapidResponseCapacityParser:
         os.remove(file_path)
         
         # Cache result
-        cache.set(cache_key, blob_url, timeout=3600)
+        BaseAITask.set_cached_result(cache_key, blob_url)
         
         return blob_url
     
-    async def _fetch_async_data(self, country_id: int, disaster_type_id: int) -> tuple:
-        """Helper method to fetch async data and return as tuple"""
-        async with self.ifrc_client as client:
-            ops_learning_data = await self._fetch_ops_learning_data(
-                client, country_id, disaster_type_id
-            )
-            events_data = await self._fetch_events_from_ops_learning(
-                client, ops_learning_data
-            )
-            return ops_learning_data, events_data
     
     def _load_questions_data(self) -> List[Dict[str, Any]]:
         """Load the parsed questions data from rr_parsed_excel.json"""
-        with open('rr_parsed_excel.json', 'r', encoding='utf-8') as f:
+        # Get the directory of this file and join with the JSON file name
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        json_path = os.path.join(current_dir, 'rr_parsed_excel.json')
+        with open(json_path, 'r', encoding='utf-8') as f:
             return json.load(f)
     
-    async def _fetch_ops_learning_data(
-        self, 
-        client: IFRCAPIClient, 
-        country_id: int, 
-        disaster_type_id: int, 
-        target_count: int = 10
-    ) -> List[Dict[str, Any]]:
-        """
-        Fetch ops-learning data using two-stage approach.
-        
-        STAGE 1: Fetch using both country and disaster type filters
-        STAGE 2: If fewer results, fetch additional using only country filter
-        """
-        # STAGE 1: Primary batch with both filters
-        primary_batch = await client.get_ops_learning(
-            country_id=country_id,
-            disaster_type_id=disaster_type_id,
-            max_results=10
-        )
-        
-        primary_labeled = [
-            {**l, "source_note": "This insight was built off similar disasters from the same country."}
-            for l in primary_batch
-        ]
-        
-        # Track appeal codes to avoid duplicates
-        seen_appeal_codes: Set[str] = set()
-        deduplicated_results = []
-        
-        # Add primary results and track their appeal codes
-        for learning in primary_labeled:
-            appeal_info = learning.get('appeal', {})
-            if isinstance(appeal_info, dict):
-                appeal_code = appeal_info.get('code')
-            else:
-                appeal_code = str(appeal_info) if appeal_info else None
-            
-            if appeal_code and appeal_code not in seen_appeal_codes:
-                seen_appeal_codes.add(appeal_code)
-                deduplicated_results.append(learning)
-            elif not appeal_code:
-                deduplicated_results.append(learning)
-        
-        # STAGE 2: If we need more results, fetch country-only data
-        if len(deduplicated_results) < 10:
-            remaining_needed = 10 - len(deduplicated_results)
-            secondary_batch = await client.get_ops_learning(
-                country_id=country_id,
-                disaster_type_id=None,
-                max_results=remaining_needed * 4
-            )
-            
-            # Filter secondary batch to only include the specific disaster type
-            filtered_secondary = []
-            for learning in secondary_batch:
-                appeal_info = learning.get('appeal', {})
-                if isinstance(appeal_info, dict):
-                    appeal_dtype = appeal_info.get('dtype', {})
-                    if isinstance(appeal_dtype, dict):
-                        dtype_id = appeal_dtype.get('id')
-                        if dtype_id == disaster_type_id:
-                            filtered_secondary.append(learning)
-            
-            secondary_labeled = [
-                {**l, "source_note": "This insight was built off similar disasters from the same country."}
-                for l in filtered_secondary
-            ]
-            
-            # Add secondary results, avoiding duplicates
-            for learning in secondary_labeled:
-                if len(deduplicated_results) >= 10:
-                    break
-                    
-                appeal_info = learning.get('appeal', {})
-                if isinstance(appeal_info, dict):
-                    appeal_code = appeal_info.get('code')
-                else:
-                    appeal_code = str(appeal_info) if appeal_info else None
-                
-                if appeal_code and appeal_code not in seen_appeal_codes:
-                    seen_appeal_codes.add(appeal_code)
-                    deduplicated_results.append(learning)
-                elif not appeal_code and len(deduplicated_results) < 10:
-                    deduplicated_results.append(learning)
-        
-        return deduplicated_results[:10]
-    
-    async def _fetch_events_from_ops_learning(
-        self, 
-        client: IFRCAPIClient, 
-        ops_learning_data: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
-        """Fetch events directly using event_details.id from ops learning data."""
-        events = []
-        seen_event_ids: Set[int] = set()
-        
-        if not ops_learning_data:
-            return events
-        
-        for learning in ops_learning_data:
-            if not isinstance(learning, dict):
-                continue
-                
-            appeal_info = learning.get('appeal', {})
-            if not isinstance(appeal_info, dict):
-                continue
-                
-            event_details = appeal_info.get('event_details', {})
-            if not isinstance(event_details, dict):
-                continue
-                
-            event_id = event_details.get('id')
-            appeal_code = appeal_info.get('code')
-            
-            if not event_id or event_id in seen_event_ids:
-                continue
-                
-            seen_event_ids.add(event_id)
-            
-            # Fetch event directly by ID
-            try:
-                event = await client.get_event_detail(event_id)
-                
-                if event:
-                    # Add source information to the event
-                    event["source_note"] = f"Event from ops learning (Appeal: {appeal_code}, Event ID: {event_id})"
-                    event["appeal_source"] = appeal_code
-                    event["event_source_id"] = event_id
-                    events.append(event)
-                    
-            except Exception:
-                continue  # Skip failed requests
-        
-        return events
     
     def _process_questions(
         self, 

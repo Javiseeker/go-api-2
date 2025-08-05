@@ -76,67 +76,20 @@ class PerformanceMonitor:
         cache.set(cache_key, existing_data, timeout=86400)  # 24 hours
 
 
-# maybe we want to delete this one.
-class EnhancedAzureOpenAiChat:
-    """Enhanced Azure OpenAI client with improved caching and error handling"""
+class BaseAITask:
+    """Base class with Azure OpenAI integration and common utilities for AI-powered tasks"""
     
+    ENCODING_NAME = "cl100k_base"
     MAX_RETRIES = 3
     
     @cached_property
-    def client(self):
+    def azure_client(self):
+        """Azure OpenAI client with enhanced error handling"""
         return AzureOpenAI(
             azure_endpoint=settings.AZURE_OPENAI_ENDPOINT, 
             api_key=settings.AZURE_OPENAI_KEY, 
             api_version="2023-05-15"
         )
-    
-    @staticmethod
-    def _generate_cache_key(messages: List[Dict[str, str]], cache_prefix: str = "ops_learning") -> str:
-        """Generate a unique cache key based on messages content"""
-        content = json.dumps(messages, sort_keys=True)
-        hash_obj = hashlib.md5(content.encode('utf-8'))
-        return f"{cache_prefix}_response:{hash_obj.hexdigest()}"
-    
-    def get_response(self, message, cache_prefix: str = "ops_learning") -> Optional[str]:
-        """Get LLM response with enhanced caching and error handling"""
-        start_time = datetime.now()
-        cache_key = self._generate_cache_key(message, cache_prefix)
-        
-        # Cache is handled by database models in BaseOpsLearningTask
-        
-        # Generate new response with retries
-        for attempt in range(self.MAX_RETRIES):
-            try:
-                response = self.client.chat.completions.create(
-                    model=settings.AZURE_OPENAI_DEPLOYMENT_NAME, 
-                    messages=message, 
-                    temperature=0.7
-                )
-                response_content = response.choices[0].message.content
-                
-                # Response caching handled by database models
-                
-                # Track performance
-                end_time = datetime.now()
-                PerformanceMonitor.track_execution_time(
-                    f"azure_openai_{cache_prefix}", start_time, end_time
-                )
-                
-                return response_content
-                
-            except Exception as e:
-                logger.warning(f"Azure OpenAI attempt {attempt + 1} failed for {cache_prefix}: {e}")
-                if attempt == self.MAX_RETRIES - 1:
-                    logger.error(f"All {self.MAX_RETRIES} attempts failed for {cache_prefix}: {e}")
-                    return None
-        
-        return None
-
-# maybe we want to get rid of this one?
-class BaseOpsLearningTask:
-    """Base class with common utilities for operational learning tasks"""
-    
-    ENCODING_NAME = "cl100k_base"
     
     @staticmethod
     def count_tokens(string: str, encoding_name: str) -> int:
@@ -185,9 +138,39 @@ class BaseOpsLearningTask:
         except Exception as e:
             logger.error(f"Cache storage error for key {cache_key}: {e}")
             return False
+    
+    def get_azure_response(self, messages: List[Dict[str, str]], cache_prefix: str = "ops_learning") -> Optional[str]:
+        """Get Azure OpenAI response with enhanced caching and error handling"""
+        start_time = datetime.now()
+        
+        # Generate new response with retries
+        for attempt in range(self.MAX_RETRIES):
+            try:
+                response = self.azure_client.chat.completions.create(
+                    model=settings.AZURE_OPENAI_DEPLOYMENT_NAME, 
+                    messages=messages, 
+                    temperature=0.7
+                )
+                response_content = response.choices[0].message.content
+                
+                # Track performance
+                end_time = datetime.now()
+                PerformanceMonitor.track_execution_time(
+                    f"azure_openai_{cache_prefix}", start_time, end_time
+                )
+                
+                return response_content
+                
+            except Exception as e:
+                logger.warning(f"Azure OpenAI attempt {attempt + 1} failed for {cache_prefix}: {e}")
+                if attempt == self.MAX_RETRIES - 1:
+                    logger.error(f"All {self.MAX_RETRIES} attempts failed for {cache_prefix}: {e}")
+                    return None
+        
+        return None
 
 
-class OpsLearningSummaryTask(BaseOpsLearningTask):
+class OpsLearningSummaryTask(BaseAITask):
     """
     Complex operational learning summary task (from ops_learning_summary2.py)
     Maintains original logic with enhanced error handling and caching
@@ -456,8 +439,7 @@ class OpsLearningSummaryTask(BaseOpsLearningTask):
             logger.error(f"Error slicing dataframe: {e}")
             return df
 
-    @classmethod
-    def generate_summary(cls, prompt, type: OpsLearningPromptResponseCache.PromptType) -> dict:
+    def generate_summary(self, prompt, type: OpsLearningPromptResponseCache.PromptType) -> dict:
         """Generates summaries using the provided system message and prompt with enhanced error handling."""
         start_time = datetime.now()
 
@@ -466,7 +448,7 @@ class OpsLearningSummaryTask(BaseOpsLearningTask):
             try:
                 message_content = [msg["content"] for msg in messages]
                 text = " ".join(message_content)
-                count = cls.count_tokens(text, cls.ENCODING_NAME)
+                count = self.count_tokens(text, self.ENCODING_NAME)
                 return count <= prompt_length_limit
             except Exception as e:
                 logger.error(f"Error validating prompt length: {e}")
@@ -485,13 +467,12 @@ class OpsLearningSummaryTask(BaseOpsLearningTask):
                     },
                 ]
 
-                if not _validate_length_prompt(messages, cls.PROMPT_LENGTH_LIMIT, type):
+                if not _validate_length_prompt(messages, self.PROMPT_LENGTH_LIMIT, type):
                     logger.warning("The length of the prompt might be too long.")
                     return "{}"
 
                 # Using Enhanced Azure OpenAI to summarize the prompt
-                client = EnhancedAzureOpenAiChat()
-                response = client.get_response(message=messages, cache_prefix=f"ops_summary_{type.name}")
+                response = self.get_azure_response(messages, cache_prefix=f"ops_summary_{type.name}")
                 return response or "{}"
                 
             except Exception as e:
@@ -543,7 +524,7 @@ class OpsLearningSummaryTask(BaseOpsLearningTask):
 
                 # NOTE: Generating the summary if summary is empty
                 while retries < MAX_RETRIES:
-                    cls.generate_summary(prompt, type)
+                    self.generate_summary(prompt, type)
                     retries += 1
                     logger.info(f"Retrying.... Attempt {retries}/{MAX_RETRIES}")
                 
@@ -570,7 +551,7 @@ class OpsLearningSummaryTask(BaseOpsLearningTask):
 
                     # Check if any excerpt id is in the content
                     if any(re.search(rf"\b{id}\b", content) for id in excerpt_id_list):
-                        return cls.generate_summary(prompt, type)
+                        return self.generate_summary(prompt, type)
 
                     # Add fallback if no location/disaster info detected
                     if "based on" not in content.lower():
@@ -596,7 +577,7 @@ class OpsLearningSummaryTask(BaseOpsLearningTask):
                 return summary
 
         try:
-            summary = _summarize(prompt, type, cls.system_message)
+            summary = _summarize(prompt, type, self.system_message)
             formatted_summary = _validate_format(summary)
             processed_summary = _modify_summary(formatted_summary)
             
@@ -1418,7 +1399,7 @@ Structure each insight as a numbered item with title and detailed content.
             return []
 
 
-class DrefSummaryTask(BaseOpsLearningTask):
+class DrefSummaryTask(BaseAITask):
     """
     DREF-specific summary task (from ops_learning_summary3.py)
     Maintains original logic with enhanced error handling and caching
@@ -1467,14 +1448,13 @@ class DrefSummaryTask(BaseOpsLearningTask):
         "Return only the 5-line paragraph without additional formatting or explanations."
     )
 
-    @classmethod
-    def generate_operational_summary(cls, dref_data: Dict[str, Any]) -> Optional[str]:
+    def generate_operational_summary(self, dref_data: Dict[str, Any]) -> Optional[str]:
         """Generate operational objective and strategy summary (3 lines max)"""
         start_time = datetime.now()
         
         # Check cache first
-        cache_key = cls.generate_cache_key(dref_data, "dref_operational")
-        cached_result = cls.get_cached_result(cache_key)
+        cache_key = self.generate_cache_key(dref_data, "dref_operational")
+        cached_result = self.get_cached_result(cache_key)
         if cached_result:
             return cached_result
         
@@ -1495,24 +1475,23 @@ class DrefSummaryTask(BaseOpsLearningTask):
             
             # Create messages
             messages = [
-                {"role": "system", "content": cls.system_message},
-                {"role": "user", "content": f"DREF Data to analyze:\n{data_json}\n\n{cls.operational_summary_prompt}"},
+                {"role": "system", "content": self.system_message},
+                {"role": "user", "content": f"DREF Data to analyze:\n{data_json}\n\n{self.operational_summary_prompt}"},
                 {"role": "assistant", "content": "I understand. I will analyze the DREF data and provide a structured summary according to your specifications."}
             ]
             
             # Token count validation
             message_content = [msg["content"] for msg in messages]
             text = " ".join(message_content)
-            token_count = cls.count_tokens(text, cls.ENCODING_NAME)
+            token_count = self.count_tokens(text, self.ENCODING_NAME)
             
-            if token_count > cls.PROMPT_LENGTH_LIMIT:
+            if token_count > self.PROMPT_LENGTH_LIMIT:
                 logger.warning("Prompt too long for operational summary, truncating data")
-                truncated_data = data_json[:cls.PROMPT_DATA_LENGTH_LIMIT]
-                messages[1]["content"] = f"DREF Data to analyze:\n{truncated_data}\n\n{cls.operational_summary_prompt}"
+                truncated_data = data_json[:self.PROMPT_DATA_LENGTH_LIMIT]
+                messages[1]["content"] = f"DREF Data to analyze:\n{truncated_data}\n\n{self.operational_summary_prompt}"
             
             # Call OpenAI backend
-            client = EnhancedAzureOpenAiChat()
-            response = client.get_response(messages, cache_prefix="dref_operational")
+            response = self.get_azure_response(messages, cache_prefix="dref_operational")
             
             if not response:
                 logger.error("No response received for operational summary")
@@ -1524,7 +1503,7 @@ class DrefSummaryTask(BaseOpsLearningTask):
             result = '\n'.join(filtered_lines)
             
             # Cache the result
-            cls.set_cached_result(cache_key, result)
+            self.set_cached_result(cache_key, result)
             
             # Track performance
             end_time = datetime.now()
@@ -1536,14 +1515,13 @@ class DrefSummaryTask(BaseOpsLearningTask):
             logger.error(f"Error generating operational summary: {e}", exc_info=True)
             return None
 
-    @classmethod
-    def generate_situational_overview(cls, latest_operational_update: Dict[str, Any]) -> Optional[str]:
+    def generate_situational_overview(self, latest_operational_update: Dict[str, Any]) -> Optional[str]:
         """Generate situational overview based on event data and operational objectives"""
         start_time = datetime.now()
         
         # Check cache first
-        cache_key = cls.generate_cache_key(latest_operational_update, "dref_situational")
-        cached_result = cls.get_cached_result(cache_key)
+        cache_key = self.generate_cache_key(latest_operational_update, "dref_situational")
+        cached_result = self.get_cached_result(cache_key)
         if cached_result:
             return cached_result
         
@@ -1564,29 +1542,28 @@ class DrefSummaryTask(BaseOpsLearningTask):
             
             # Create messages
             messages = [
-                {"role": "system", "content": cls.system_message},
-                {"role": "user", "content": f"DREF Data to analyze:\n{data_json}\n\n{cls.situational_overview_prompt}"},
+                {"role": "system", "content": self.system_message},
+                {"role": "user", "content": f"DREF Data to analyze:\n{data_json}\n\n{self.situational_overview_prompt}"},
                 {"role": "assistant", "content": "I understand. I will analyze the DREF operational data and create a comprehensive 5-line situational overview paragraph focusing on event situation and operational objectives."}
             ]
             
             # Token count validation
             message_content = [msg["content"] for msg in messages]
             text = " ".join(message_content)
-            token_count = cls.count_tokens(text, cls.ENCODING_NAME)
+            token_count = self.count_tokens(text, self.ENCODING_NAME)
             
-            if token_count > cls.PROMPT_LENGTH_LIMIT:
+            if token_count > self.PROMPT_LENGTH_LIMIT:
                 logger.warning("Prompt too long for situational overview")
                 return None
             
             # Generate summary using Azure OpenAI
-            client = EnhancedAzureOpenAiChat()
-            ai_response = client.get_response(messages, cache_prefix="dref_situational")
+            ai_response = self.get_azure_response(messages, cache_prefix="dref_situational")
             
             if ai_response and ai_response.strip():
                 result = ai_response.strip()
                 
                 # Cache the result
-                cls.set_cached_result(cache_key, result)
+                self.set_cached_result(cache_key, result)
                 
                 # Track performance
                 end_time = datetime.now()
@@ -1601,15 +1578,13 @@ class DrefSummaryTask(BaseOpsLearningTask):
             logger.error(f"Error generating situational overview: {e}", exc_info=True)
             return None
 
-
-    @classmethod
-    def generate_sector_summaries(cls, dref_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def generate_sector_summaries(self, dref_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Generate sector-based summaries from DREF data with enhanced error handling"""
         start_time = datetime.now()
         
         # Check cache first
-        cache_key = cls.generate_cache_key(dref_data, "dref_sectors")
-        cached_result = cls.get_cached_result(cache_key)
+        cache_key = self.generate_cache_key(dref_data, "dref_sectors")
+        cached_result = self.get_cached_result(cache_key)
         if cached_result:
             logger.info("Using cached DREF sector summaries")
             return cached_result
@@ -1618,7 +1593,7 @@ class DrefSummaryTask(BaseOpsLearningTask):
             sectors = []
             
             # Get sector data organized by title
-            sector_data = cls.organize_data_by_sector(dref_data)
+            sector_data = self.organize_data_by_sector(dref_data)
             
             for sector_title, sector_info in sector_data.items():
                 try:
@@ -1644,7 +1619,7 @@ class DrefSummaryTask(BaseOpsLearningTask):
                     
                     # Generate needs summary using LLM
                     if sector_info.get('needs'):
-                        needs_summary = cls.generate_needs_summary(sector_info['needs'])
+                        needs_summary = self.generate_needs_summary(sector_info['needs'])
                         if needs_summary:
                             sector_summary["needs_summary"] = needs_summary
                         else:
@@ -1652,12 +1627,12 @@ class DrefSummaryTask(BaseOpsLearningTask):
                     
                     # Process planned interventions for future actions
                     if sector_info.get('planned_interventions'):
-                        future_actions = cls.process_planned_interventions(sector_info['planned_interventions'])
+                        future_actions = self.process_planned_interventions(sector_info['planned_interventions'])
                         
                         # Generate intervention_summary for each future action if needs_summary exists
                         if sector_summary["needs_summary"]:
                             for action in future_actions:
-                                intervention_summary = cls.generate_intervention_summary(
+                                intervention_summary = self.generate_intervention_summary(
                                     sector_summary["needs_summary"], 
                                     action
                                 )
@@ -1680,7 +1655,7 @@ class DrefSummaryTask(BaseOpsLearningTask):
                     continue
             
             # Cache the result
-            cls.set_cached_result(cache_key, sectors)
+            self.set_cached_result(cache_key, sectors)
             
             # Track performance
             end_time = datetime.now()
@@ -1693,8 +1668,7 @@ class DrefSummaryTask(BaseOpsLearningTask):
             logger.error(f"Error generating sector summaries: {e}", exc_info=True)
             return []
 
-    @classmethod
-    def generate_dref_summaries(cls, dref_data: Dict[str, Any]) -> Dict[str, Any]:
+    def generate_dref_summaries(self, dref_data: Dict[str, Any]) -> Dict[str, Any]:
         """Generate operational and sector-based summaries with comprehensive error handling"""
         start_time = datetime.now()
         
@@ -1708,7 +1682,7 @@ class DrefSummaryTask(BaseOpsLearningTask):
         
         try:
             # Generate operational summary
-            operational_summary = cls.generate_operational_summary(dref_data)
+            operational_summary = self.generate_operational_summary(dref_data)
             if operational_summary:
                 result["operational_summary"] = operational_summary
             else:
@@ -1716,7 +1690,7 @@ class DrefSummaryTask(BaseOpsLearningTask):
                 logger.error("Failed to generate operational summary")
             
             # Generate sector summaries
-            sectors = cls.generate_sector_summaries(dref_data)
+            sectors = self.generate_sector_summaries(dref_data)
             if sectors:
                 result["sectors"] = sectors
             else:
@@ -1737,7 +1711,7 @@ class DrefSummaryTask(BaseOpsLearningTask):
             result["performance_metrics"] = {
                 "execution_time_seconds": execution_time,
                 "timestamp": end_time.isoformat(),
-                "cache_hits": len([key for key in ["operational_summary", "sectors"] if cls.get_cached_result(cls.generate_cache_key(dref_data, f"dref_{key}"))])
+                "cache_hits": len([key for key in ["operational_summary", "sectors"] if self.get_cached_result(self.generate_cache_key(dref_data, f"dref_{key}"))])
             }
             
             PerformanceMonitor.track_execution_time("generate_dref_summaries", start_time, end_time)
@@ -1749,14 +1723,13 @@ class DrefSummaryTask(BaseOpsLearningTask):
 
         return result
 
-    @classmethod
-    def generate_planned_intervention_summary(cls, dref_data: Dict[str, Any]) -> Optional[str]:
+    def generate_planned_intervention_summary(self, dref_data: Dict[str, Any]) -> Optional[str]:
         """Generate planned intervention summary using LLM with enhanced error handling"""
         logger.info("Generating DREF planned intervention summary")
         
         # Check cache first
-        cache_key = cls.generate_cache_key(dref_data, "dref_planned_intervention")
-        cached_result = cls.get_cached_result(cache_key)
+        cache_key = self.generate_cache_key(dref_data, "dref_planned_intervention")
+        cached_result = self.get_cached_result(cache_key)
         if cached_result:
             logger.info("Using cached DREF planned intervention summary")
             return cached_result
@@ -1782,30 +1755,29 @@ class DrefSummaryTask(BaseOpsLearningTask):
             
             # Create messages
             messages = [
-                {"role": "system", "content": cls.system_message},
-                {"role": "user", "content": f"DREF Data to analyze:\n{data_json}\n\n{cls.planned_intervention_summary_prompt}"},
+                {"role": "system", "content": self.system_message},
+                {"role": "user", "content": f"DREF Data to analyze:\n{data_json}\n\n{self.planned_intervention_summary_prompt}"},
                 {"role": "assistant", "content": "I understand. I will analyze the DREF planned interventions and create a comprehensive summary according to your specifications."}
             ]
             
             # Token count validation
             message_content = [msg["content"] for msg in messages]
             text = " ".join(message_content)
-            token_count = cls.count_tokens(text, cls.ENCODING_NAME)
+            token_count = self.count_tokens(text, self.ENCODING_NAME)
             logger.info(f"DREF planned intervention token count: {token_count}")
             
-            if token_count > cls.PROMPT_LENGTH_LIMIT:
+            if token_count > self.PROMPT_LENGTH_LIMIT:
                 logger.warning("Prompt too long for planned intervention summary")
                 return None
             
             # Generate summary using Azure OpenAI
-            client = EnhancedAzureOpenAiChat()
-            ai_response = client.get_response(messages, cache_prefix="dref_planned_intervention")
+            ai_response = self.get_azure_response(messages, cache_prefix="dref_planned_intervention")
             
             if ai_response and ai_response.strip():
                 result = ai_response.strip()
                 
                 # Cache the result
-                cls.set_cached_result(cache_key, result)
+                self.set_cached_result(cache_key, result)
                 
                 logger.info("Successfully generated planned intervention summary")
                 return result
@@ -1817,8 +1789,7 @@ class DrefSummaryTask(BaseOpsLearningTask):
             logger.error(f"Error generating planned intervention summary: {e}", exc_info=True)
             return None
 
-    @classmethod
-    def organize_data_by_sector(cls, dref_data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    def organize_data_by_sector(self, dref_data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
         """Organize DREF data by sector - prioritizing planned_interventions as sector definitions"""
         try:
             sector_data = {}
@@ -1857,7 +1828,7 @@ class DrefSummaryTask(BaseOpsLearningTask):
                         # Try fuzzy matching for common mismatches
                         matched = False
                         for existing_sector in sector_data.keys():
-                            if cls._sectors_match(sector_title, existing_sector):
+                            if self._sectors_match(sector_title, existing_sector):
                                 sector_data[existing_sector]['needs'].append(need)
                                 matched = True
                                 break
@@ -1874,8 +1845,7 @@ class DrefSummaryTask(BaseOpsLearningTask):
             logger.error(f"Error organizing data by sector: {e}")
             return {}
 
-    @classmethod
-    def _sectors_match(cls, need_title: str, intervention_title: str) -> bool:
+    def _sectors_match(self, need_title: str, intervention_title: str) -> bool:
         """Check if sector titles match with fuzzy logic for common mismatches"""
         try:
             # Common title mappings
@@ -1913,8 +1883,7 @@ class DrefSummaryTask(BaseOpsLearningTask):
             logger.error(f"Error in sector matching: {e}")
             return False
 
-    @classmethod
-    def generate_needs_summary(cls, needs_data: List[Dict[str, Any]]) -> Optional[str]:
+    def generate_needs_summary(self, needs_data: List[Dict[str, Any]]) -> Optional[str]:
         """Generate needs summary using LLM with enhanced error handling"""
         if not needs_data:
             return None
@@ -1945,13 +1914,12 @@ class DrefSummaryTask(BaseOpsLearningTask):
                 )
                 
                 messages = [
-                    {"role": "system", "content": cls.system_message},
+                    {"role": "system", "content": self.system_message},
                     {"role": "user", "content": f"Needs data:\n{combined_needs}\n\n{needs_summary_prompt}"},
                     {"role": "assistant", "content": "I understand. I will analyze the needs data and provide a structured summary according to your specifications."}
                 ]
                 
-                client = EnhancedAzureOpenAiChat()
-                response = client.get_response(messages, cache_prefix="dref_needs")
+                response = self.get_azure_response(messages, cache_prefix="dref_needs")
                 # Clean response: strip whitespace and remove extra line breaks
                 cleaned_response = ' '.join(response.strip().split()) if response else None
                 return cleaned_response
@@ -1959,14 +1927,13 @@ class DrefSummaryTask(BaseOpsLearningTask):
             except Exception as llm_error:
                 # Fallback: Create a simple summary from the needs descriptions
                 logger.warning(f"LLM failed for needs summary, using fallback: {llm_error}")
-                return cls._create_fallback_needs_summary(combined_needs)
+                return self._create_fallback_needs_summary(combined_needs)
             
         except Exception as e:
             logger.error(f"Error generating needs summary: {e}")
             return None
 
-    @classmethod
-    def _create_fallback_needs_summary(cls, combined_needs: str) -> str:
+    def _create_fallback_needs_summary(self, combined_needs: str) -> str:
         """Create a fallback summary when LLM is not available"""
         try:
             # Extract key phrases and create a simple summary
@@ -1986,8 +1953,7 @@ class DrefSummaryTask(BaseOpsLearningTask):
             logger.error(f"Error creating fallback needs summary: {e}")
             return "Critical needs have been identified requiring immediate humanitarian response."
 
-    @classmethod
-    def generate_intervention_summary(cls, needs_summary: str, future_action: Dict[str, Any]) -> Optional[str]:
+    def generate_intervention_summary(self, needs_summary: str, future_action: Dict[str, Any]) -> Optional[str]:
         """Generate intervention summary for a single future action using LLM"""
         if not needs_summary or not future_action:
             return None
@@ -2002,7 +1968,7 @@ class DrefSummaryTask(BaseOpsLearningTask):
             action_text += f"- People Targeted: {future_action.get('people_targeted_total', 0)}\n"
             
             # Enhanced system message with description context but don't show description in user prompt
-            enhanced_system_message = f"{cls.system_message} The intervention involves: {description}"
+            enhanced_system_message = f"{self.system_message} The intervention involves: {description}"
             
             intervention_summary_prompt = (
                 "\nExplain how this future action addresses the identified needs:\n"
@@ -2027,8 +1993,7 @@ class DrefSummaryTask(BaseOpsLearningTask):
                 {"role": "assistant", "content": "I understand. I will analyze this intervention and provide a summary according to your specifications."}
             ]
             
-            client = EnhancedAzureOpenAiChat()
-            response = client.get_response(messages, cache_prefix="dref_intervention")
+            response = self.get_azure_response(messages, cache_prefix="dref_intervention")
             # Clean response: strip whitespace and remove extra line breaks
             cleaned_response = ' '.join(response.strip().split()) if response else None
             return cleaned_response
@@ -2096,14 +2061,11 @@ class DrefSummaryTask(BaseOpsLearningTask):
         return future_actions
 
 
-class RRCapacityTask(BaseOpsLearningTask):
+class RRCapacityTask(BaseAITask):
     """
     Rapid Response Capacity Assessment task using enhanced Azure OpenAI client.
     Handles RR-specific prompt logic and formatting for capacity question processing.
     """
-    
-    def __init__(self):
-        self.ai_client = EnhancedAzureOpenAiChat()
 
     def process_capacity_question(
         self, question_data: Dict[str, Any], event_data: List[Dict[str, Any]], ops_learning_data: Optional[List[Dict[str, Any]]] = None
@@ -2173,7 +2135,7 @@ class RRCapacityTask(BaseOpsLearningTask):
             },
         ]
 
-        response = self.ai_client.get_response(messages, cache_prefix="rr_capacity")
+        response = self.get_azure_response(messages, cache_prefix="rr_capacity")
 
         if response:
             response = self._clean_markdown_formatting(response)
@@ -2691,4 +2653,249 @@ class RRCapacityTask(BaseOpsLearningTask):
 
             formatted_learning.append(" | ".join(learning_info))
 
-        return "\n".join(formatted_learning)
+
+class PreviousCrisesTask(BaseAITask):
+    """Task for processing previous crises insights with operational learning data"""
+    
+    def __init__(self):
+        from per.ucl_research.ifrc_client import IFRCAPIClient
+        self.ifrc_client = IFRCAPIClient()
+    
+    async def process_previous_crises_insights(self, country_id: int, disaster_type_id: int) -> List[Dict[str, Any]]:
+        """Process previous crises insights and generate AI summaries"""
+        
+        async with self.ifrc_client as client:
+            # STEP 1: primary (country AND disaster) 
+            primary = await client.get_ops_learning(country_id, disaster_type_id)
+            primary_labeled = [
+                {**l, "source_note": "This insight was built off similar disasters from the same country."}
+                for l in primary
+            ]
+
+            # STEP 2: fallback (country only)
+            if not primary:
+                secondary = await client.get_ops_learning(country_id, None)
+            else:
+                all_country = await client.get_ops_learning(country_id, None)
+                primary_ids = {p['id'] for p in primary}
+                secondary = [l for l in all_country if l['id'] not in primary_ids]
+
+        secondary_labeled = [
+            {**l, "source_note": "This insight was built off other disasters from the same country."}
+            for l in secondary
+        ]
+
+        # STEP 3: Combine both sets of learning and pad out to up to 6 items
+        combined_learning = (primary_labeled + secondary_labeled)[:6]
+
+        if not combined_learning:
+            return []
+
+        # STEP 4: Convert raw learning entries into the expected format
+        processed_learnings = [self.create_learning_entry(l) for l in combined_learning]
+        for pl in processed_learnings:
+            pl["source_note"] = next(
+                l["source_note"]
+                for l in combined_learning
+                if l["id"] == pl["id"]
+            )
+
+        # STEP 5: Call AI summary generator
+        ai_summary = self.generate_ai_summary([{"related_ops_learning": processed_learnings}])
+        
+        return ai_summary
+    
+    def fetch_ops_learning(
+        self,
+        country_id: int,
+        disaster_type_id: Optional[int],
+        max_results: int = 6
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch up to max_results validated learnings for (country + optional dtype),
+        letting the server do the heavy lifting.
+        """
+        params = {
+            "is_validated": "true",
+            "limit": max_results,
+            "appeal_code__country": country_id,
+        }
+        if disaster_type_id is not None:
+            # actually filter by the nested event dtype field
+            params["appeal__event_details__dtype"] = disaster_type_id
+
+        resp = self.make_api_request(
+            "https://goadmin.ifrc.org/api/v2/ops-learning/",
+            params,
+            "ops learning"
+        ).get("results", [])
+
+        logger.info(f"=== DEBUG: {len(resp)} learnings fetched from API "
+                  f"(country={country_id}, dtype={disaster_type_id}) ===")
+        return resp
+
+    def make_api_request(self, url: str, params: Dict[str, Any], data_type: str) -> Dict[str, Any]:
+        """Make HTTP request to external API with error handling."""
+        import httpx
+        try:
+            logger.info(f"=== DEBUG: Making {data_type} request to {url} with params: {params} ===")
+            with httpx.Client(timeout=10.0) as client:
+                response = client.get(url, params=params)
+                response.raise_for_status()
+            
+            results = response.json().get('results', [])
+            logger.info(f"=== DEBUG: {data_type} request returned {len(results)} results ===")
+            
+            return {'results': results}
+        except (httpx.RequestError, httpx.HTTPStatusError, ValueError) as exc:
+            logger.info(f"=== DEBUG: Error in {data_type} request: {exc} ===")
+            return {
+                'error': True,
+                'detail': f'Error fetching {data_type}: {exc}',
+                'results': []
+            }
+
+    def create_learning_entry(self, learning: Dict[str, Any]) -> Dict[str, Any]:
+        """Create learning entry dict."""
+        return {
+            'id': learning.get('id'),
+            'learning_text': learning.get('learning_validated_en', learning.get('learning_en')),
+            'document_name': learning.get('document_name'),
+            'document_url': learning.get('document_url'),
+            'sector_validated': learning.get('sector_validated'),
+            'organization_validated': learning.get('organization_validated'),
+            'type_validated': learning.get('type_validated'),
+            'created_at': learning.get('created_at'),
+            'modified_at': learning.get('modified_at'),
+            'appeal_code': learning.get('appeal_code'),
+            'appeal_name': learning.get('appeal', {}).get('name'),
+            'event_id': learning.get('appeal', {}).get('event_details', {}).get('id'),
+        }
+
+    def generate_ai_summary(self, structured_data):
+        """Generate AI summary using Azure OpenAI"""
+        import json
+        
+        # 1) Build flat list of learnings
+        all_learnings = [l for e in structured_data for l in e.get('related_ops_learning', [])][:20]
+
+        def truncate(text: str, max_chars: int = 500) -> str:
+            return text if len(text) <= max_chars else text[:max_chars] + "..."
+
+        # 2) System prompt with an explicit example
+        system_message = {
+                "role": "system",
+                "content": (
+                    "You MUST return a JSON array of up to 6 objects, each with a clear suggestion at the end. Each insight **must** merge "
+                    "between **one** and **three** distinct learnings inclusive and be very detailed. "
+                    "The tone should be to help with a current similar crisis.  "
+                    "For each insight also include a short list of 1-2 clear **recommendations** "
+                    "labeled 'recommendations' that follow from the insight.\n\n"
+                    "Example of correct output:\n\n"
+                    "[\n"
+                    "  {\n"
+                    "    \"title\": \"Customizing Data Tools\",\n"
+                    "    \"insight\": \"...\",\n"
+                    "    \"recommendations\": [\n"
+                    "       \"Do X within the first week of response\",\n"
+                    "       \"Train local staff on Y tool\"\n"
+                    "    ],\n"
+                    "    \"source_note\": \"…\",\n"
+                    "    \"metadata\": { … }\n"
+                    "  }\n"
+                    "]\n\n"
+                    "Return ONLY the JSON array (no markdown)."
+                )
+            }
+
+        # 3) Build the user-visible list of learnings
+        learnings_block = "\n".join(
+            f"- ID {l['id']} | Code {l['appeal_code']} | Name {l['appeal_name']} | {l['document_name']}:\n"
+            f"  {truncate(l['learning_text'])}"
+            for l in all_learnings
+        )
+        user_message = {
+            "role": "user",
+            "content": (
+                "Here are the learnings:\n" + learnings_block +
+                "\n\nPlease synthesize up to 6 actionable insights by combining any learnings that share a theme. Explain how the insight is buiilt using the sources and appeal codes"
+                "Each insight must draw on at least two of the above. If the insight is based off different disasters, then try to link it to the current disaster. "
+                "Then for each insight, under a key called `recommendations`, list 1–2 clear next steps that an operational team could take.  "
+                "In `metadata.operational_learning_source` list every source you used (with its `id`, `code`, and `name`).  "
+                "Make each insight no more than 5 sentences, include the country name, and return only valid JSON."
+            )
+        }
+
+        # 4) Call OpenAI using enhanced client
+        raw = self.get_azure_response([system_message, user_message], cache_prefix="previous_crises")
+
+        if not raw:
+            return []
+
+        try:
+            clean = raw.strip()
+            if clean.startswith("```"):
+                clean = clean.strip("```").strip()
+            parsed = json.loads(clean)
+        except Exception as e:
+            logger.error(f"AI parsing error: {e}")
+            return [{
+                "title": "ParsingError",
+                "insight": raw.strip(),
+                "metadata": { "operational_learning_source": [] }
+            }]
+
+        out = []
+        for obj in parsed:
+            title = obj.get("title")
+            insight_text = obj.get("insight")
+            recs = obj.get("recommendations", [])
+            meta = obj.get("metadata", {})
+            if not (title and insight_text and isinstance(meta, dict)):
+                continue
+
+            # build the list of source dicts
+            srcs = []
+            for entry in meta.get("operational_learning_source", []):
+                rid = entry["id"] if isinstance(entry, dict) else entry
+                match = next((l for l in all_learnings if str(l["id"]) == str(rid)), None)
+                if not match:
+                    continue
+                srcs.append({
+                    "id":       match["id"],
+                    "code":     match["appeal_code"],
+                    "name":     match["appeal_name"],
+                    "event_id": match.get("event_id"),
+                })
+
+            # if none matched, fall back to first two learnings
+            if not srcs and len(all_learnings) >= 2:
+                for l in all_learnings[:2]:
+                    srcs.append({
+                        "id":       l["id"],
+                        "code":     l["appeal_code"],
+                        "name":     l["appeal_name"],
+                        "event_id": l.get("event_id"),
+                    })
+
+            # New: simple, descriptive source_note
+            insight_source_note = (
+                f"This insight was synthesized from {len(srcs)} operational-learning source"
+                + ("s." if len(srcs) != 1 else ".")
+            )
+
+            out.append({
+                "title":           title,
+                "insight":         insight_text,
+                "recommendations": recs,
+                "source_note":     insight_source_note,
+                "metadata": {
+                    "operational_learning_source": srcs
+                }
+            })
+
+        return out or [{
+            "title": "ParsingError",
+            "insight": raw.strip(),
+            "metadata": { "operational_learning_source": [] }
+        }]

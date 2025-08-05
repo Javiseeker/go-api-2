@@ -4,6 +4,24 @@
 
 This module contains unified API views for generating operational learning summaries and insights from IFRC humanitarian operations data. All views use modern async HTTP requests via httpx and include enhanced error handling, caching, and performance monitoring.
 
+## Recent Improvements (Knowledge Transfer Session)
+
+### Code Organization & Clean Architecture
+- **Consolidated Caching**: Unified all caching mechanisms to use `BaseAITask` methods instead of multiple caching approaches
+- **Task-Based Architecture**: Moved all business logic from views to dedicated task classes (`PreviousCrisesTask`, `DrefSummaryTask`, `RRCapacityTask`)
+- **Enhanced Base Class**: Merged Azure OpenAI functionality into `BaseAITask` for better naming and inheritance structure
+- **API Client Integration**: All HTTP requests moved to `IFRCAPIClient` for consistent async operations
+- **Validation Consolidation**: All HTTP request validation consolidated in `BaseUCLView` with reusable validation methods
+
+### File Organization
+- **Resource Location**: Moved `rr_parsed_excel.json` to `ucl_research/` folder for better organization
+- **Separation of Concerns**: Views now contain minimal logic and primarily handle HTTP request/response while task classes contain all business logic and AI processing
+
+### Code Quality
+- **Reduced Complexity**: Eliminated redundant classes and consolidated common functionality
+- **Improved Maintainability**: Clear separation between HTTP handling (views) and business logic (tasks)
+- **Consistent Patterns**: All endpoints now follow the same architectural patterns
+
 ## Architecture
 
 ```
@@ -11,10 +29,11 @@ per/ucl_research/
 ├── __init__.py                    # Module exports and public API
 ├── ops_learning_summary4.py       # Consolidated AI summary tasks & Azure OpenAI integration
 ├── ifrc_client.py                 # Unified async HTTP client
-├── ucl_views.py                   # 4 unified API views
+├── ucl_views.py                   # 4 unified API views (minimal logic, calls task classes)
 ├── rapid_response_parser.py       # RR capacity questions parser with Excel generation
 ├── blob_upload.py                 # Azure Blob Storage utility
 ├── serializers.py                 # DRF response serializers
+├── rr_parsed_excel.json          # RR capacity questions template data
 └── README.md                      # This documentation
 ```
 
@@ -217,7 +236,9 @@ if cached_url:
 #### Phase 2: Questions Template Loading
 ```python
 # Load pre-parsed capacity assessment framework
-with open('rr_parsed_excel.json', 'r', encoding='utf-8') as f:
+current_dir = os.path.dirname(os.path.abspath(__file__))
+json_path = os.path.join(current_dir, 'rr_parsed_excel.json')
+with open(json_path, 'r', encoding='utf-8') as f:
     questions_template = json.load(f)
     
 # Template structure:
@@ -794,11 +815,12 @@ All Azure OpenAI functionality is consolidated in the appropriate task classes w
 - **`generate_situational_overview(update_dict)`**: 5-line situational narratives
 
 ### AI Processing Pipeline
-1. **Unified Azure Client**: Single `EnhancedAzureOpenAiChat` instance for all endpoints
-2. **Specialized Prompts**: Endpoint-specific prompt engineering with caching
-3. **Response Caching**: Redis-based caching with `OpsLearningPromptResponseCache` model
-4. **Performance Monitoring**: Built-in execution time tracking via `PerformanceMonitor`
-5. **Error Handling**: Comprehensive fallback strategies and detailed logging
+1. **Unified Base Class**: `BaseAITask` provides Azure OpenAI integration and caching for all AI-powered task classes
+2. **Specialized Task Classes**: Each endpoint has dedicated task classes (PreviousCrisesTask, DrefSummaryTask, RRCapacityTask)
+3. **Consolidated Caching**: Unified caching mechanisms via `BaseAITask.get_cached_result/set_cached_result`
+4. **API Client Integration**: All HTTP requests use `IFRCAPIClient` for consistent async operations
+5. **Performance Monitoring**: Built-in execution time tracking via `PerformanceMonitor`
+6. **Error Handling**: Comprehensive fallback strategies and detailed logging
 
 ---
 

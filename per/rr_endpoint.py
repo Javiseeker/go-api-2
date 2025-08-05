@@ -118,7 +118,10 @@ class RRCapacityQuestionsView(APIView):
 
     def _load_questions_data(self) -> List[Dict[str, Any]]:
         """Load the parsed questions data from rr_parsed_excel.json with simple string References format."""
-        with open('rr_parsed_excel.json', 'r', encoding='utf-8') as f:
+        # Get the path relative to the ucl_research folder
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        json_path = os.path.join(current_dir, 'ucl_research', 'rr_parsed_excel.json')
+        with open(json_path, 'r', encoding='utf-8') as f:
             return json.load(f)
 
     def _fetch_events_from_ops_learning(self, ops_learning_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
