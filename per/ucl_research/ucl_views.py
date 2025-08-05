@@ -444,7 +444,7 @@ class PreviousCrisesInsightsView(BaseUCLView):
             "content": (
                 "Generate RR questions for each insight. "
                 "Match each insight to the most relevant 'Area' in the template JSON, "
-                "generate 2–4 focused RR questions based on questions from that Area's 'Critical Questions', "
+                "derive 1–2 focused RR questions from that Area's 'Critical Questions', "
                 "and return a JSON array of objects with keys: "
                 "'title', 'insight', 'area', 'rr_questions'."
             )
