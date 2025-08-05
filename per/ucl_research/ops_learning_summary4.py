@@ -1792,72 +1792,6 @@ class DrefSummaryTask(BaseAITask):
 
         return result
 
-    def generate_planned_intervention_summary(self, dref_data: Dict[str, Any]) -> Optional[str]:
-        """Generate planned intervention summary using LLM with enhanced error handling"""
-        logger.info("Generating DREF planned intervention summary")
-        
-        # Check cache first
-        cache_key = self.generate_cache_key(dref_data, "dref_planned_intervention")
-        cached_result = self.get_cached_result(cache_key)
-        if cached_result:
-            logger.info("Using cached DREF planned intervention summary")
-            return cached_result
-        
-        try:
-            # Extract planned intervention data
-            planned_interventions = dref_data.get('planned_interventions', [])
-            if not planned_interventions:
-                logger.info("No planned interventions found")
-                return None
-            
-            # Format intervention data for AI processing
-            intervention_data = {
-                'planned_interventions': planned_interventions,
-                'total_targeted_population': dref_data.get('total_targeted_population', 0),
-                'amount_requested': dref_data.get('amount_requested', 0),
-                'operation_timeframe': dref_data.get('operation_timeframe', ''),
-                'country_details': dref_data.get('country_details', {}),
-                'disaster_type_details': dref_data.get('disaster_type_details', {})
-            }
-            
-            data_json = json.dumps(intervention_data, indent=2, ensure_ascii=False, default=str)
-            
-            # Create messages
-            messages = [
-                {"role": "system", "content": self.system_message},
-                {"role": "user", "content": f"DREF Data to analyze:\n{data_json}\n\n{self.planned_intervention_summary_prompt}"},
-                {"role": "assistant", "content": "I understand. I will analyze the DREF planned interventions and create a comprehensive summary according to your specifications."}
-            ]
-            
-            # Token count validation
-            message_content = [msg["content"] for msg in messages]
-            text = " ".join(message_content)
-            token_count = self.count_tokens(text, self.ENCODING_NAME)
-            logger.info(f"DREF planned intervention token count: {token_count}")
-            
-            if token_count > self.PROMPT_LENGTH_LIMIT:
-                logger.warning("Prompt too long for planned intervention summary")
-                return None
-            
-            # Generate summary using Azure OpenAI
-            ai_response = self.get_azure_response(messages, cache_prefix="dref_planned_intervention")
-            
-            if ai_response and ai_response.strip():
-                result = ai_response.strip()
-                
-                # Cache the result
-                self.set_cached_result(cache_key, result)
-                
-                logger.info("Successfully generated planned intervention summary")
-                return result
-            else:
-                logger.warning("Empty response from Azure OpenAI for planned intervention summary")
-                return None
-                
-        except Exception as e:
-            logger.error(f"Error generating planned intervention summary: {e}", exc_info=True)
-            return None
-
     def organize_data_by_sector(self, dref_data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
         """Organize DREF data by sector - prioritizing planned_interventions as sector definitions"""
         try:
@@ -2776,52 +2710,6 @@ class PreviousCrisesTask(BaseAITask):
         
         return ai_summary
     
-    def fetch_ops_learning(
-        self,
-        country_id: int,
-        disaster_type_id: Optional[int],
-        max_results: int = 6
-    ) -> List[Dict[str, Any]]:
-        """
-        Fetch up to max_results validated learnings for (country + optional dtype),
-        letting the server do the heavy lifting.
-        """
-        params = {
-            "is_validated": "true",
-            "limit": max_results,
-            "appeal_code__country": country_id,
-        }
-        if disaster_type_id is not None:
-            # actually filter by the nested event dtype field
-            params["appeal__event_details__dtype"] = disaster_type_id
-
-        resp = self.make_api_request(
-            "https://goadmin.ifrc.org/api/v2/ops-learning/",
-            params,
-            "ops learning"
-        ).get("results", [])
-
-        return resp
-
-    def make_api_request(self, url: str, params: Dict[str, Any], data_type: str) -> Dict[str, Any]:
-        """Make HTTP request to external API with error handling."""
-        import httpx
-        try:
-            with httpx.Client(timeout=10.0) as client:
-                response = client.get(url, params=params)
-                response.raise_for_status()
-            
-            results = response.json().get('results', [])
-            
-            return {'results': results}
-        except (httpx.RequestError, httpx.HTTPStatusError, ValueError) as exc:
-            logger.error(f"Error in {data_type} request: {exc}")
-            return {
-                'error': True,
-                'detail': f'Error fetching {data_type}: {exc}',
-                'results': []
-            }
-
     def create_learning_entry(self, learning: Dict[str, Any]) -> Dict[str, Any]:
         """Create learning entry dict."""
         return {
@@ -2835,8 +2723,8 @@ class PreviousCrisesTask(BaseAITask):
             'created_at': learning.get('created_at'),
             'modified_at': learning.get('modified_at'),
             'appeal_code': learning.get('appeal_code'),
-            'appeal_name': learning.get('appeal', {}).get('name'),
-            'event_id': learning.get('appeal', {}).get('event_details', {}).get('id'),
+            'appeal_name': (learning.get('appeal') or {}).get('name'),
+            'event_id':    ((learning.get('appeal') or {}).get('event_details') or {}).get('id'),
         }
 
     def generate_ai_summary(self, structured_data):
@@ -2851,29 +2739,25 @@ class PreviousCrisesTask(BaseAITask):
 
         # 2) System prompt with an explicit example
         system_message = {
-                "role": "system",
-                "content": (
-                    "You MUST return a JSON array of up to 6 objects, each with a clear suggestion at the end. Each insight **must** merge "
-                    "between **one** and **three** distinct learnings inclusive and be very detailed. "
-                    "The tone should be to help with a current similar crisis.  "
-                    "For each insight also include a short list of 1-2 clear **recommendations** "
-                    "labeled 'recommendations' that follow from the insight.\n\n"
-                    "Example of correct output:\n\n"
-                    "[\n"
-                    "  {\n"
-                    "    \"title\": \"Customizing Data Tools\",\n"
-                    "    \"insight\": \"...\",\n"
-                    "    \"recommendations\": [\n"
-                    "       \"Do X within the first week of response\",\n"
-                    "       \"Train local staff on Y tool\"\n"
-                    "    ],\n"
-                    "    \"source_note\": \"…\",\n"
-                    "    \"metadata\": { … }\n"
-                    "  }\n"
-                    "]\n\n"
-                    "Return ONLY the JSON array (no markdown)."
-                )
-            }
+            "role": "system",
+            "content": (
+                "You MUST return a JSON array of up to 6 objects, each merging between two and three distinct learnings into a single, detailed insight."
+                "You MUST include the source of learning you are referencing within the insight "
+                "Prioritise showing insights that are based on learnings that have a matching disaster type. "
+                "The tone should be to help with a current similar crisis. "
+                "Include for each insight a key called `source_note` and a `metadata.operational_learning_source` array of {id,code,name}.  "
+                "Example of correct output:\n\n"
+                "[\n"
+                "  {\n"
+                "    \"title\": \"Customizing Data Tools\",\n"
+                "    \"insight\": \"...\",\n"
+                "    \"source_note\": \"…\",\n"
+                "    \"metadata\": { … }\n"
+                "  }\n"
+                "]\n\n"
+                "Return ONLY the JSON array (no markdown)."
+            )
+        }
 
         # 3) Build the user-visible list of learnings
         learnings_block = "\n".join(
@@ -2885,11 +2769,11 @@ class PreviousCrisesTask(BaseAITask):
             "role": "user",
             "content": (
                 "Here are the learnings:\n" + learnings_block +
-                "\n\nPlease synthesize up to 6 actionable insights by combining any learnings that share a theme. Explain how the insight is buiilt using the sources and appeal codes"
-                "Each insight must draw on at least two of the above. If the insight is based off different disasters, then try to link it to the current disaster. "
-                "Then for each insight, under a key called `recommendations`, list 1–2 clear next steps that an operational team could take.  "
+                "\n\nPlease synthesize up to 6 actionable insights by combining any learnings that share a theme. "
+                "Explain how each insight builds on the sources and appeal codes, and enrich them with the event details (description, disaster type, country).  "
+                "You MUST include the source of learning you are referencing within the insight "
                 "In `metadata.operational_learning_source` list every source you used (with its `id`, `code`, and `name`).  "
-                "Make each insight no more than 5 sentences, include the country name, and return only valid JSON."
+                "Make each insight no less than 4 sentences, include the country name, and return only valid JSON."
             )
         }
 
@@ -2966,3 +2850,60 @@ class PreviousCrisesTask(BaseAITask):
             "insight": raw.strip(),
             "metadata": { "operational_learning_source": [] }
         }]
+    
+    def generate_rr_questions(self,  rr_template, structured_data):
+        import json
+
+        ai_insights = structured_data[0].get("related_ops_learning", [])
+
+        def truncate(text: str, n: int = 100) -> str:
+            return text if len(text) <= n else text[:n] + "…"
+
+        insights_block = "\n".join(
+            f"- {truncate(l.get('title','Untitled'))}: {truncate(l.get('insight',''))}"
+            for l in ai_insights
+        )
+
+        system_message = {
+            "role": "system",
+            "content": (
+                "Generate RR questions for each insight. "
+                "Match each insight to the most relevant 'Area' in the template JSON, "
+                "generate 1–2 focused RR questions based on that Area's 'Critical Questions', "
+                "and return a JSON array of objects with keys: "
+                "'title', 'insight', 'area', 'rr_questions'."
+            )
+        }
+
+        user_message = {
+            "role": "user",
+            "content": (
+                f"Insights:\n{insights_block}\n\n"
+                f"Template JSON:\n{json.dumps(rr_template)}\n\n"
+                "Now generate the RR questions based on this template."
+            )
+        }
+
+        raw = self.get_azure_response(
+            [system_message, user_message], cache_prefix="previous_crises"
+        )
+        if not raw:
+            return []
+
+        try:
+            payload = json.loads(raw.strip().strip("```json").strip("```").strip())
+        except Exception as e:
+            logger.error(f"RR questions JSON parse error: {e}")
+            return []
+
+        return [
+            {
+                "title":        item.get("title"),
+                "insight":      item.get("insight"),
+                "area":         item.get("area"),
+                "rr_questions": item.get("rr_questions", []),
+            }
+            for item in payload
+        ]
+
+ 
