@@ -12,6 +12,7 @@ per/ucl_research/
 ├── ops_learning_summary4.py       # Consolidated AI summary tasks & Azure OpenAI integration
 ├── ifrc_client.py                 # Unified async HTTP client
 ├── ucl_views.py                   # 4 unified API views
+├── rapid_response_parser.py       # RR capacity questions parser with Excel generation
 ├── blob_upload.py                 # Azure Blob Storage utility
 ├── serializers.py                 # DRF response serializers
 └── README.md                      # This documentation
@@ -194,7 +195,9 @@ return Response({
 
 **Purpose:** Generate AI-powered Excel reports pre-filled with contextual humanitarian capacity assessments using operational learning from similar historical responses.
 
-**Technical Architecture:** Async data pipeline, AI question processing, multi-sheet Excel generation, Azure Blob storage integration.
+**Technical Architecture:** Synchronous processing with async data pipeline, AI question processing, multi-sheet Excel generation, Azure Blob storage integration.
+
+**Recent Fix:** Fixed coroutine JSON serialization error by converting `RapidResponseCapacityParser.process_rr_capacity_questions` from async to sync method using `asyncio.run()` for internal async operations.
 
 ### Detailed Technical Request Flow
 
@@ -230,33 +233,19 @@ with open('rr_parsed_excel.json', 'r', encoding='utf-8') as f:
 
 #### Phase 3: Two-Stage Operational Learning Data Acquisition
 ```python
-# Stage 1: Precise matching (Country + Disaster Type)
-primary_ops_learning = await client.get_ops_learning(
-    country_id=country_id,
-    disaster_type_id=disaster_type_id,
-    is_validated="true",
-    limit=10
+# Using RapidResponseCapacityParser for dedicated processing
+parser = RapidResponseCapacityParser()
+
+# Stage 1: Precise matching (Country + Disaster Type) 
+ops_learning_data, events_data = asyncio.run(
+    parser._fetch_async_data(country_id, disaster_type_id)
 )
 
-# Stage 2: Broader context if insufficient primary data
-if len(primary_ops_learning) < 5:
-    fallback_ops_learning = await client.get_ops_learning(
-        country_id=country_id,
-        disaster_type_id=None,
-        is_validated="true", 
-        limit=10
-    )
-    
-    # Deduplication by appeal_code
-    seen_appeals = {learning.get('appeal', {}).get('code') for learning in primary_ops_learning}
-    additional_learning = [
-        l for l in fallback_ops_learning 
-        if l.get('appeal', {}).get('code') not in seen_appeals
-    ]
-    
-    ops_learning_data = primary_ops_learning + additional_learning[:5]
-else:
-    ops_learning_data = primary_ops_learning
+# Internal two-stage approach:
+# - Primary: Country + Disaster Type filtering (up to 10 results)
+# - Secondary: Country-only fallback with disaster type validation
+# - Deduplication by appeal_code to prevent duplicates
+# - Source attribution for transparency
 ```
 
 #### Phase 4: Event Context Extraction Pipeline
@@ -293,30 +282,16 @@ events_data = await fetch_events_from_ops_learning(client, ops_learning_data)
 
 #### Phase 5: AI-Powered Question Processing
 ```python
-# Context aggregation for AI processing
-context_data = {
-    "country_info": {"id": country_id, "context": events_data},
-    "disaster_type": disaster_type_id,
-    "historical_responses": ops_learning_data,
-    "event_patterns": events_data
-}
+# Process questions and fill missing fields using RRCapacityTask
+processed_questions = parser._process_questions(
+    questions_data, events_data, ops_learning_data
+)
 
-# AI question processing pipeline
-processed_questions = []
-for question in questions_template:
-    if question.get('ai_fillable', False):
-        # Generate AI response based on context
-        ai_response = await self.response_service.process_question(
-            question=question,
-            context=context_data,
-            confidence_threshold=0.7
-        )
-        
-        question['ai_response'] = ai_response.get('answer', '')
-        question['confidence_score'] = ai_response.get('confidence', 0.0)
-        question['source_references'] = ai_response.get('sources', [])
-    
-    processed_questions.append(question)
+# Internal processing for each question:
+# - Check if "Notes on Response Capacity with sources" field is missing/null
+# - Use RRCapacityTask.process_capacity_question() for AI generation
+# - Update question with generated responses and source references
+# - Handle processing failures gracefully with error messages
 ```
 
 #### Phase 6: Multi-Sheet Excel Generation
@@ -327,25 +302,21 @@ def create_rr_capacity_excel(processed_questions, country_id, disaster_type_id, 
     
     wb = Workbook()
     
-    # Sheet 1: Main Questions with AI Responses
+    # Main Sheet: RR Capacity Assessment with proper structure
     ws_main = wb.active
     ws_main.title = "RR Capacity Assessment"
     
-    # Headers with styling
-    headers = ["Question ID", "Category", "Question", "AI Response", "Confidence", "Sources"]
-    for col, header in enumerate(headers, 1):
-        cell = ws_main.cell(row=1, column=col, value=header)
-        cell.font = Font(bold=True)
-        cell.fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+    # Headers matching original Excel structure
+    headers = [
+        "Area", "Critical Questions", "Guiding/probing questions",
+        "Notes on Response Capacity with sources", "Status",
+        "Recommended actions for continuation of response", 
+        "Examples of recommended actions", "References"
+    ]
     
-    # Data population
-    for row, question in enumerate(processed_questions, 2):
-        ws_main.cell(row=row, column=1, value=question.get('question_id', ''))
-        ws_main.cell(row=row, column=2, value=question.get('category', ''))
-        ws_main.cell(row=row, column=3, value=question.get('question_text', ''))
-        ws_main.cell(row=row, column=4, value=question.get('ai_response', ''))
-        ws_main.cell(row=row, column=5, value=question.get('confidence_score', 0.0))
-        ws_main.cell(row=row, column=6, value='; '.join(question.get('source_references', [])))
+    # Area-based color coding and merged cells for same areas
+    # Data population with AI-filled responses in "Notes on Response Capacity with sources"
+    # Source attribution and references properly formatted
     
     # Sheet 2: Source Data Documentation
     ws_sources = wb.create_sheet("Source Data")

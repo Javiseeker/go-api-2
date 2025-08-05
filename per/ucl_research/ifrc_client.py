@@ -239,7 +239,6 @@ class IFRCAPIClient:
             "appeal_code__country": country_id,
             }
             if disaster_type_id is not None:
-                # actually filter by the nested event dtype field
                 params["appeal__event_details__dtype"] = disaster_type_id
             
             data = await self._make_request(
