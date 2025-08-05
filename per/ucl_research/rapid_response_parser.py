@@ -127,7 +127,7 @@ class RapidResponseCapacityParser:
             notes_value = question.get(notes_field_new) or question.get(notes_field_old)
             needs_processing = (
                 not notes_value or 
-                str(notes_value).lower() in ['nan', 'null', 'none', '']
+                str(notes_value or "").lower() in ['nan', 'null', 'none', '']
             )
             
             if needs_processing:
@@ -147,7 +147,7 @@ class RapidResponseCapacityParser:
                             elif field_name in processed_question:
                                 # Only update if the original field was empty/null
                                 original_value = question.get(field_name)
-                                if not original_value or str(original_value).lower() in ['nan', 'null', 'none', '']:
+                                if not original_value or str(original_value or "").lower() in ['nan', 'null', 'none', '']:
                                     processed_question[field_name] = response
                         
                 except Exception as e:
@@ -255,7 +255,7 @@ class RapidResponseCapacityParser:
             area = question.get("Area", "")
             
             # If area is null/empty, use the previous area
-            if not area or area == "null" or str(area).lower() == 'nan':
+            if not area or area == "null" or str(area or "").lower() == 'nan':
                 area = current_area
             
             # Extract main area name for comparison
@@ -288,7 +288,7 @@ class RapidResponseCapacityParser:
                 value = question.get(header, "")
                 
                 # Handle NaN values
-                if str(value).lower() == 'nan':
+                if str(value or "").lower() == 'nan':
                     value = ""
                 
                 # Handle list values

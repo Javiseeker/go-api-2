@@ -139,6 +139,75 @@ class BaseAITask:
             logger.error(f"Cache storage error for key {cache_key}: {e}")
             return False
     
+    @staticmethod
+    def calculate_confidence_score(
+        ai_response: str, 
+        source_data_count: int = 0, 
+        has_specific_facts: bool = False,
+        response_length: int = 0
+    ) -> str:
+        """
+        Calculate confidence score based on multiple factors.
+        
+        Args:
+            ai_response: The AI-generated response text
+            source_data_count: Number of source data points used
+            has_specific_facts: Whether response contains specific facts/numbers
+            response_length: Length of the response
+            
+        Returns:
+            Confidence level: 'high', 'medium', or 'low'
+        """
+        if not ai_response or ai_response.strip() == "":
+            return "low"
+            
+        # Check if response indicates insufficient data
+        insufficient_indicators = [
+            "not available", "insufficient", "no data", "no information",
+            "enough source is not available", "limited data", "unclear from sources"
+        ]
+        if any(indicator in ai_response.lower() for indicator in insufficient_indicators):
+            return "low"
+        
+        # Check for explicit confidence mentions in AI response
+        if "confidence level" in ai_response.lower():
+            import re
+            confidence_match = re.search(r'confidence level[:\s]*(\w+)', ai_response.lower())
+            if confidence_match:
+                level = confidence_match.group(1).strip()
+                if level in ['high', 'medium', 'low']:
+                    return level
+        
+        # Calculate score based on multiple factors
+        score = 0
+        
+        # Factor 1: Source data availability (0-3 points)
+        if source_data_count >= 5:
+            score += 3
+        elif source_data_count >= 2:
+            score += 2
+        elif source_data_count >= 1:
+            score += 1
+        
+        # Factor 2: Response quality indicators (0-2 points)
+        if has_specific_facts or any(indicator in ai_response.lower() for indicator in 
+                                   ['specific', 'according to', 'based on', 'documented', 'reported']):
+            score += 2
+        elif response_length > 100:  # Substantial response
+            score += 1
+            
+        # Factor 3: Response length and detail (0-1 point)
+        if response_length > 200:
+            score += 1
+        
+        # Map score to confidence level
+        if score >= 5:
+            return "high"
+        elif score >= 3:
+            return "medium"
+        else:
+            return "low"
+    
     def get_azure_response(self, messages: List[Dict[str, str]], cache_prefix: str = "ops_learning") -> Optional[str]:
         """Get Azure OpenAI response with enhanced caching and error handling"""
         start_time = datetime.now()
@@ -554,18 +623,18 @@ class OpsLearningSummaryTask(BaseAITask):
                         return self.generate_summary(prompt, type)
 
                     # Add fallback if no location/disaster info detected
-                    if "based on" not in content.lower():
+                    if "based on" not in (content or "").lower():
                         fallback_context = "based on responses from unspecified locations or disaster types."
-                        if content.endswith("."):
+                        if content and content.endswith("."):
                             content = content + " " + fallback_context
                         else:
-                            content = content + ". " + fallback_context
+                            content = (content or "") + ". " + fallback_context
 
-                    value["content"] = content.strip()
+                    value["content"] = (content or "").strip()
                     value["excerpts id"] = excerpt_id_list
 
                     # Optional: extract and move confidence level
-                    if "confidence level" not in value and "confidence level" in content.lower():
+                    if "confidence level" not in value and "confidence level" in (content or "").lower():
                         parts = re.split(r"(?i)\bconfidence level\b", content, maxsplit=1)
                         value["content"] = parts[0].strip() + "."
                         value["confidence level"] = parts[1].strip()
@@ -2087,11 +2156,11 @@ class RRCapacityTask(BaseAITask):
         if ops_learning_data is None:
             ops_learning_data = []
 
-        area = question_data.get("Area", "")
-        critical_question = question_data.get("Critical Questions", "")
-        guiding_questions = question_data.get("Guiding/probing questions", "")
-        examples = question_data.get("Examples of recommended actions", "")
-        references = question_data.get("References", "")
+        area = question_data.get("Area") or ""
+        critical_question = question_data.get("Critical Questions") or ""
+        guiding_questions = question_data.get("Guiding/probing questions") or ""
+        examples = question_data.get("Examples of recommended actions") or ""
+        references = question_data.get("References") or ""
 
         # Improve references handling - check for different formats
         if isinstance(references, list):
@@ -2126,10 +2195,10 @@ class RRCapacityTask(BaseAITask):
             {
                 "role": "user",
                 "content": (
-                    f"Now analyze this question: {critical_question}\n\n"
-                    f"Assessment Area: {area}\n\n"
-                    f"Events Context:\n{events_context}\n\n"
-                    f"Operational Learning Context:\n{learning_context}\n\n"
+                    f"Now analyze this question: {critical_question or 'No critical question provided'}\n\n"
+                    f"Assessment Area: {area or 'No area specified'}\n\n"
+                    f"Events Context:\n{events_context or 'No events context available'}\n\n"
+                    f"Operational Learning Context:\n{learning_context or 'No learning context available'}\n\n"
                     f"Generate 3-4 bullets using the exact format shown above. Each bullet must include specific facts from the provided sources."
                 ),
             },
@@ -2215,9 +2284,9 @@ class RRCapacityTask(BaseAITask):
         
         # Extract country names from sources
         source_countries = set()
-        if "philippines" in events_context.lower() or "philippines" in learning_context.lower():
+        if "philippines" in (events_context or "").lower() or "philippines" in (learning_context or "").lower():
             source_countries.add("philippines")
-        if "djibouti" in events_context.lower() or "djibouti" in learning_context.lower():
+        if "djibouti" in (events_context or "").lower() or "djibouti" in (learning_context or "").lower():
             source_countries.add("djibouti")
             
         # Check for problematic patterns
@@ -2237,13 +2306,13 @@ class RRCapacityTask(BaseAITask):
 
     def _build_system_prompt(self, critical_question: str, area: str, top_facts: str) -> str:
         """Build a comprehensive system prompt with key facts and question-specific guidance."""
-        question_lower = (critical_question or "").lower()
-        area_lower = (area or "").lower()
+        question_lower = (critical_question or "").lower() if critical_question else ""
+        area_lower = (area or "").lower() if area else ""
 
         # Base rules and requirements
         base_prompt = (
             f"You are an IFRC emergency response specialist conducting rapid response capacity assessment.\n\n"
-            f"KEY FACTS FROM SOURCES:\n{top_facts}\n\n"
+            f"KEY FACTS FROM SOURCES:\n{top_facts or 'No key facts available'}\n\n"
             f"CRITICAL INSTRUCTION: You are ONLY allowed to use information that is EXPLICITLY provided in the sources above.\n"
             f"You are FORBIDDEN from using any information from your training data, general knowledge, or any other source.\n"
             f"If the sources do not contain enough information to answer the question, you MUST respond with:\n"
@@ -2653,6 +2722,8 @@ class RRCapacityTask(BaseAITask):
 
             formatted_learning.append(" | ".join(learning_info))
 
+        return "\n".join(formatted_learning) if formatted_learning else "No operational learning data available from sources."
+
 
 class PreviousCrisesTask(BaseAITask):
     """Task for processing previous crises insights with operational learning data"""
@@ -2730,25 +2801,21 @@ class PreviousCrisesTask(BaseAITask):
             "ops learning"
         ).get("results", [])
 
-        logger.info(f"=== DEBUG: {len(resp)} learnings fetched from API "
-                  f"(country={country_id}, dtype={disaster_type_id}) ===")
         return resp
 
     def make_api_request(self, url: str, params: Dict[str, Any], data_type: str) -> Dict[str, Any]:
         """Make HTTP request to external API with error handling."""
         import httpx
         try:
-            logger.info(f"=== DEBUG: Making {data_type} request to {url} with params: {params} ===")
             with httpx.Client(timeout=10.0) as client:
                 response = client.get(url, params=params)
                 response.raise_for_status()
             
             results = response.json().get('results', [])
-            logger.info(f"=== DEBUG: {data_type} request returned {len(results)} results ===")
             
             return {'results': results}
         except (httpx.RequestError, httpx.HTTPStatusError, ValueError) as exc:
-            logger.info(f"=== DEBUG: Error in {data_type} request: {exc} ===")
+            logger.error(f"Error in {data_type} request: {exc}")
             return {
                 'error': True,
                 'detail': f'Error fetching {data_type}: {exc}',

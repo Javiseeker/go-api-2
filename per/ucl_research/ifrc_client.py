@@ -236,10 +236,11 @@ class IFRCAPIClient:
             params = {
             "is_validated": "true",
             "limit": max_results,
-            "appeal_code__country": country_id,
             }
+            if country_id is not None:
+                params["appeal_code__country"] = str(country_id)
             if disaster_type_id is not None:
-                params["appeal__event_details__dtype"] = disaster_type_id
+                params["appeal_code__dtype__in"] = str(disaster_type_id)
             
             data = await self._make_request(
                 method="GET",
