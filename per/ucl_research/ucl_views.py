@@ -37,6 +37,8 @@ from per.ucl_research.rapid_response_parser import RapidResponseCapacityParser
 from datetime import datetime
 from django.core.cache import cache
 from typing import Dict, List, Optional, Any
+import json
+
 
 class BaseUCLView(APIView):
     """Base class for UCL research views with common functionality"""
@@ -98,37 +100,42 @@ class PreviousCrisesInsightsView(BaseUCLView):
     """API view for fetching and enriching IFRC event data with operational learning insights."""
     
     DISASTER_TYPE_EVENT_THRESHOLD = 1
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.azure_client = EnhancedAzureOpenAiChat()
 
+        # load JSON from a simple relative path
+        try:
+            here = os.path.dirname(__file__)
+            path = os.path.join(here, 'rr_parsed_excel.json')
+            with open(path, 'r', encoding='utf-8') as f:
+                self.rr_template = json.load(f)
+        except Exception:
+            self.rr_template = []
+            logger.warning("Could not load RR questions template JSON")
+
     def get(self, request) -> Response:
-        """Get IFRC events with operational learning insights"""
         start_time = datetime.now()
-        
-        # Validate parameters
         params, error_response = self._validate_country_disaster_params(request)
         if error_response:
             return error_response
 
         country_id, disaster_type_id = params
-
-        # Check cache first for fast response
         cache_key = f"ucl_previous_crises:{country_id}:{disaster_type_id}"
-        cached_result = cache.get(cache_key)
-        if cached_result is not None:
-            return Response({"ai_structured_summary": cached_result}, status=drf_status.HTTP_200_OK)
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return Response({"ai_structured_summary": cached}, status=drf_status.HTTP_200_OK)
 
         try:
-            # Process synchronously like the working IFRCEventListView
-            result = self._process_previous_crises_insights(country_id, disaster_type_id, cache_key)
-            
-            # Track performance
-            end_time = datetime.now()
-            PerformanceMonitor.track_execution_time("ifrc_event_list", start_time, end_time)
-            
-            return result
+            response = self._process_previous_crises_insights(country_id, disaster_type_id, cache_key)
+            PerformanceMonitor.track_execution_time("ifrc_event_list", start_time, datetime.now())
+            return response
+        except Exception as e:
+            logger.error(f"Error in PreviousCrisesInsightsView: {e}", exc_info=True)
+            return Response({
+                "error": "Internal server error occurred while processing IFRC events",
+                "details": str(e)
+            }, status=drf_status.HTTP_500_INTERNAL_SERVER_ERROR)
             
         except Exception as e:
             logger.error(f"Error in PreviousCrisesInsightsView: {e}", exc_info=True)
@@ -137,60 +144,55 @@ class PreviousCrisesInsightsView(BaseUCLView):
                 "details": str(e)
             }, status=drf_status.HTTP_500_INTERNAL_SERVER_ERROR)
     
-    def _process_previous_crises_insights(self, country_id: int, disaster_type_id: int, cache_key: str) -> Response:
-        """Process previous crises insights synchronously with caching - exactly like IFRCEventListView"""
-        
-        # STEP 1: primary (country AND disaster) - use sync method like IFRCEventListView
+    def _process_previous_crises_insights(
+        self, country_id: int, disaster_type_id: int, cache_key: str
+    ) -> Response:
+        # STEP 1–4: exactly as before: fetch primary/secondary, combine & slice
         primary = self._fetch_ops_learning(country_id, disaster_type_id)
-        primary_labeled = [
-            {**l, "source_note": "This insight was built off similar disasters from the same country."}
-            for l in primary
-        ]
+        secondary = (
+            self._fetch_ops_learning(country_id, None)
+            if not primary
+            else [
+                l for l in self._fetch_ops_learning(country_id, None)
+                if l["id"] not in {p["id"] for p in primary}
+            ]
+        )
+        combined = (primary + secondary)[:6]
+        if not combined:
+            return Response({"ai_structured_summary": []}, status=drf_status.HTTP_200_OK)
 
-        # STEP 2: fallback (country only)
-        if not primary:
-            secondary = self._fetch_ops_learning(country_id, None)
-        else:
-            all_country = self._fetch_ops_learning(country_id, None)
-            primary_ids = {p['id'] for p in primary}
-            secondary = [l for l in all_country if l['id'] not in primary_ids]
+        # Convert to the minimal entries for the AI
+        processed_learnings = [self._create_learning_entry(l) for l in combined]
 
-        secondary_labeled = [
-            {**l, "source_note": "This insight was built off other disasters from the same country."}
-            for l in secondary
-        ]
+        # STEP 5a: Generate the original insights
+        ai_insights = self._generate_ai_summary([{"related_ops_learning": processed_learnings}])
+        # ai_insights: a list of dicts with keys: title, insight, recommendations, source_note, metadata
 
-        # STEP 3: Combine both sets of learning and pad out to up to 6 items
-        combined_learning = (primary_labeled + secondary_labeled)[:6]
+        # STEP 5b: Generate RR questions based on those same insights
+        # We pass the exact same shape so the RR helper can read titles & insights
+        rr_payload = [{"related_ops_learning": ai_insights}]
+        rr_results = self._generate_rr_questions(rr_payload)
+        # rr_results: list of {title, insight, area, rr_questions}
 
-        if not combined_learning:
-            return Response({
-                "ai_structured_summary": [],
-                "fallback_note": (
-                    "No operational learnings have been recorded in the system for this context yet. "
-                    "You're welcome to check the [Ops Learning dashboard]"
-                    "(https://go.ifrc.org/deployments/ops-learning) "
-                    "and the [IFRC's evaluations database]"
-                    "(https://www.ifrc.org/evaluations) to learn more."
-                )
-            }, status=drf_status.HTTP_200_OK)
+        # STEP 6: Merge them by title
+        merged = []
+        # Build a lookup by title for quick match
+        rr_by_title = {r["title"]: r for r in rr_results}
+        for insight_obj in ai_insights:
+            title = insight_obj["title"]
+            rr = rr_by_title.get(title, {})
+            merged.append({
+                "title":        title,
+                "insight":      insight_obj["insight"],
+                "area":         rr.get("area"),                  # from your RR mapping
+                "rr_questions": rr.get("rr_questions", []),
+                "source_note":  insight_obj.get("source_note"),
+                "metadata":     insight_obj.get("metadata", {}),
+            })
 
-        # STEP 4: Convert raw learning entries into the expected format
-        processed_learnings = [self._create_learning_entry(l) for l in combined_learning]
-        for pl in processed_learnings:
-            pl["source_note"] = next(
-                l["source_note"]
-                for l in combined_learning
-                if l["id"] == pl["id"]
-            )
-
-        # STEP 5: Call AI summary generator
-        ai_summary = self._generate_ai_summary([{"related_ops_learning": processed_learnings}])
-        
-        # Cache result for future requests
-        cache.set(cache_key, ai_summary, timeout=3600)
-        
-        return Response({"ai_structured_summary": ai_summary}, status=drf_status.HTTP_200_OK)
+        # Cache & return under the same key
+        cache.set(cache_key, merged, timeout=3600)
+        return Response({"ai_structured_summary": merged}, status=drf_status.HTTP_200_OK)
 
     def _fetch_ops_learning(
         self,
@@ -392,6 +394,62 @@ class PreviousCrisesInsightsView(BaseUCLView):
             "metadata": { "operational_learning_source": [] }
         }]
 
+    def _generate_rr_questions(self, structured_data):
+        import json
+
+        # AI insights come in as related_ops_learning entries:
+        ai_insights = structured_data[0].get("related_ops_learning", [])
+
+        def truncate(text: str, n: int = 100) -> str:
+            return text if len(text) <= n else text[:n] + "…"
+
+        # Build the prompt using title + insight, not ID
+        insights_block = "\n".join(
+            f"- {truncate(l.get('title','Untitled'))}: {truncate(l.get('insight',''))}"
+            for l in ai_insights
+        )
+
+        system_message = {
+            "role": "system",
+            "content": (
+                "Generate RR questions for each insight. "
+                "Match each insight to the most relevant 'Area' in the template JSON, "
+                "derive 1–2 focused RR questions from that Area's 'Critical Questions', "
+                "and return a JSON array of objects with keys: "
+                "'title', 'insight', 'area', 'rr_questions'."
+            )
+        }
+
+        user_message = {
+            "role": "user",
+            "content": (
+                f"Insights:\n{insights_block}\n\n"
+                f"Template JSON:\n{json.dumps(self.rr_template)}\n\n"
+                "Now generate the RR questions based on this template."
+            )
+        }
+
+        raw = self.azure_client.get_response(
+            [system_message, user_message], cache_prefix="previous_crises"
+        )
+        if not raw:
+            return []
+
+        try:
+            payload = json.loads(raw.strip().strip("```json").strip("```").strip())
+        except Exception as e:
+            logger.error(f"RR questions JSON parse error: {e}")
+            return []
+
+        return [
+            {
+                "title":        item.get("title"),
+                "insight":      item.get("insight"),
+                "area":         item.get("area"),
+                "rr_questions": item.get("rr_questions", []),
+            }
+            for item in payload
+        ]
 
 @method_decorator(csrf_exempt, name='dispatch')
 class RapidResponseCapacityQuestionsView(BaseUCLView):
