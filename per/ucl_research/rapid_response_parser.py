@@ -89,8 +89,8 @@ class RapidResponseCapacityParser:
         
         return blob_url
     
-    
-    def _load_questions_data(self) -> List[Dict[str, Any]]:
+    @classmethod
+    def _load_questions_data(cls) -> List[Dict[str, Any]]:
         """Load the parsed questions data from rr_parsed_excel.json"""
         # Get the directory of this file and join with the JSON file name
         current_dir = os.path.dirname(os.path.abspath(__file__))

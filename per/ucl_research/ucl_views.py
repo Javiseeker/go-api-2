@@ -101,6 +101,11 @@ class PreviousCrisesInsightsView(BaseUCLView):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.previous_crises_task = PreviousCrisesTask()
+        try:
+            self.rr_template = RapidResponseCapacityParser._load_questions_data()
+        except Exception as e:
+            self.rr_template = []
+            logger.warning(f"Could not load RR questions template: {e}")
 
     def get(self, request) -> Response:
         """Get IFRC events with operational learning insights"""
@@ -143,10 +148,6 @@ class PreviousCrisesInsightsView(BaseUCLView):
         async with IFRCAPIClient() as client:
             # STEP 1: primary (country AND disaster) 
             primary = await client.get_ops_learning(country_id, disaster_type_id)
-            primary_labeled = [
-                {**l, "source_note": "This insight was built off similar disasters from the same country."}
-                for l in primary
-            ]
 
             # STEP 2: fallback (country only)
             if not primary:
@@ -156,13 +157,8 @@ class PreviousCrisesInsightsView(BaseUCLView):
                 primary_ids = {p['id'] for p in primary}
                 secondary = [l for l in all_country if l['id'] not in primary_ids]
 
-            secondary_labeled = [
-                {**l, "source_note": "This insight was built off other disasters from the same country."}
-                for l in secondary
-            ]
-
             # STEP 3: Combine both sets of learning and pad out to up to 6 items
-            combined_learning = (primary_labeled + secondary_labeled)[:6]
+            combined_learning = (primary + secondary)[:6]
 
             if not combined_learning:
                 return Response({
@@ -179,15 +175,37 @@ class PreviousCrisesInsightsView(BaseUCLView):
             # STEP 4: Convert raw learning entries into the expected format
             processed_learnings = [self.previous_crises_task.create_learning_entry(l) for l in combined_learning]
             for pl in processed_learnings:
-                pl["source_note"] = next(
-                    l["source_note"]
-                    for l in combined_learning
-                    if l["id"] == pl["id"]
-                )
+                ev_id = pl.get("event_id")
+                event = await client.get_event_detail(ev_id) if ev_id else {}
+
+                # Handle case where event might be None
+                if not event:
+                    event = {}
+
+                # Safely extract countries list
+                countries = event.get("countries", [])
+                if not isinstance(countries, list):
+                    countries = []
+
+                # Safely extract dtype name
+                dtype_obj = event.get("dtype")
+                if isinstance(dtype_obj, dict):
+                    dtype_name = dtype_obj.get("name")
+                else:
+                    dtype_name = str(dtype_obj) if dtype_obj is not None else None
+
+                pl["event"] = {
+                    "id":          event.get("id"),
+                    "name":        event.get("name"),
+                    "dtype":       dtype_name,
+                    "start":       event.get("disaster_start_date"),
+                    "countries":   [c.get("name") for c in countries if c],
+                    "description": event.get("description") or event.get("summary") or ""
+                }
 
             # STEP 5: Call AI summary generator
             ai_summary = self.previous_crises_task.generate_ai_summary([{"related_ops_learning": processed_learnings}])
-        
+            
         if not ai_summary:
             return Response({
                 "ai_structured_summary": [],
@@ -200,16 +218,30 @@ class PreviousCrisesInsightsView(BaseUCLView):
                 )
             }, status=drf_status.HTTP_200_OK)
         
+        rr_results = self.previous_crises_task.generate_rr_questions(self.rr_template, [{"related_ops_learning": ai_summary}])
+        rr_by_title = {r["title"]: r for r in rr_results}
+        merged = []
+        for obj in ai_summary:
+            rr = rr_by_title.get(obj["title"], {})
+            merged.append({
+                "title":        obj["title"],
+                "insight":      obj["insight"],
+                "area":         rr.get("area"),
+                "rr_questions": rr.get("rr_questions", []),
+                "source_note":  obj.get("source_note"),
+                "metadata":     obj.get("metadata", {}),
+            })
+        
         # Calculate confidence score
         confidence_score = BaseAITask.calculate_confidence_score(
-            ai_response=str(ai_summary),
+            ai_response=str(merged),
             source_data_count=len(combined_learning),
-            has_specific_facts=any('based on' in str(item).lower() for item in ai_summary if isinstance(item, dict)),
-            response_length=len(str(ai_summary))
+            has_specific_facts=any('based on' in str(item).lower() for item in merged if isinstance(item, dict)),
+            response_length=len(str(merged))
         )
         
         response_data = {
-            "ai_structured_summary": ai_summary,
+            "ai_structured_summary": merged,
             "confidence_score": confidence_score
         }
         
