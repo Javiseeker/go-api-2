@@ -157,15 +157,20 @@ class PreviousCrisesInsightsView(BaseUCLView):
             all_country = self._fetch_ops_learning(country_id, None)
             p_ids = {p["id"] for p in primary}
             secondary = [l for l in all_country if l["id"] not in p_ids]
+
+        logger.debug(f"[FALLBACK] primary_count={len(primary)}, secondary_count={len(secondary)}")
+
+        # 2) combine & limit
         combined = (primary + secondary)[:6]
         if not combined:
-            return Response({"ai_structured_summary": []}, status=drf_status.HTTP_200_OK)
+            return Response({
+                "ai_structured_summary": [],
+                "fallback_note": "No operational learnings have been recorded in the system for this context yet. You're welcome to check the Ops Learning dashboard or evaluations database."
+            }, status=drf_status.HTTP_200_OK)
 
-        # 2) minimal entries
+        # 3) minimal entries + event fetch
         processed_learnings = [self._create_learning_entry(l) for l in combined]
-
         import httpx
-
         for pl in processed_learnings:
             ev_id = pl.get("event_id")
             event = {}
@@ -173,14 +178,11 @@ class PreviousCrisesInsightsView(BaseUCLView):
                 try:
                     logger.debug(f"[EVENT] querying /api/v2/event/?id={ev_id}")
                     with httpx.Client(timeout=10.0) as client:
-                        r = client.get(
-                            "https://goadmin.ifrc.org/api/v2/event/",
-                            params={"id": ev_id}
-                        )
+                        r = client.get("https://goadmin.ifrc.org/api/v2/event/", params={"id": ev_id})
                         r.raise_for_status()
-                        payload = r.json().get("results", [])
-                    if payload and isinstance(payload, list) and isinstance(payload[0], dict):
-                        event = payload[0]
+                        results = r.json().get("results", [])
+                    if results and isinstance(results[0], dict):
+                        event = results[0]
                         logger.debug(f"[EVENT] loaded event {ev_id}: {event.get('name')!r}")
                     else:
                         logger.warning(f"[EVENT] no event in results for id={ev_id}")
@@ -192,18 +194,17 @@ class PreviousCrisesInsightsView(BaseUCLView):
                 "name":        event.get("name"),
                 "dtype":       (event.get("dtype") or {}).get("name"),
                 "start":       event.get("disaster_start_date"),
-                "countries":   [c.get("name") for c in event.get("countries", [])]
-                                if isinstance(event.get("countries"), list) else [],
+                "countries":   [c.get("name") for c in event.get("countries", [])] if isinstance(event.get("countries"), list) else [],
                 "description": event.get("description") or event.get("summary") or ""
             }
 
-        # 3) generate AI insights
+        # 4) AI insights
         ai_insights = self._generate_ai_summary([{"related_ops_learning": processed_learnings}])
 
-        # 4) generate RR questions
+        # 5) RR questions
         rr_results = self._generate_rr_questions([{"related_ops_learning": ai_insights}])
 
-        # 5) merge by title
+        # 6) merge by title
         rr_by_title = {r["title"]: r for r in rr_results}
         merged = []
         for obj in ai_insights:
@@ -217,9 +218,10 @@ class PreviousCrisesInsightsView(BaseUCLView):
                 "metadata":     obj.get("metadata", {}),
             })
 
-        # 6) cache & return
+        # 7) cache & return
         cache.set(cache_key, merged, timeout=3600)
         return Response({"ai_structured_summary": merged}, status=drf_status.HTTP_200_OK)
+
 
 
     def _fetch_ops_learning(
