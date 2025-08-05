@@ -32,10 +32,9 @@ from per.ucl_research.serializers import (
     PerDrefSituationalOverviewSerializer,
 )
 from per.ucl_research.ifrc_client import IFRCAPIClient
-from per.ucl_research.ops_learning_summary4 import DrefSummaryTask, OpsLearningSummaryTask, PerformanceMonitor, EnhancedAzureOpenAiChat, RRCapacityTask
+from per.ucl_research.ops_learning_summary4 import DrefSummaryTask, OpsLearningSummaryTask, PerformanceMonitor, RRCapacityTask, BaseAITask, PreviousCrisesTask
 from per.ucl_research.rapid_response_parser import RapidResponseCapacityParser
 from datetime import datetime
-from django.core.cache import cache
 from typing import Dict, List, Optional, Any
 
 class BaseUCLView(APIView):
@@ -101,7 +100,7 @@ class PreviousCrisesInsightsView(BaseUCLView):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.azure_client = EnhancedAzureOpenAiChat()
+        self.previous_crises_task = PreviousCrisesTask()
 
     def get(self, request) -> Response:
         """Get IFRC events with operational learning insights"""
@@ -116,13 +115,14 @@ class PreviousCrisesInsightsView(BaseUCLView):
 
         # Check cache first for fast response
         cache_key = f"ucl_previous_crises:{country_id}:{disaster_type_id}"
-        cached_result = cache.get(cache_key)
+        cached_result = BaseAITask.get_cached_result(cache_key)
         if cached_result is not None:
             return Response({"ai_structured_summary": cached_result}, status=drf_status.HTTP_200_OK)
 
         try:
-            # Process synchronously like the working IFRCEventListView
-            result = self._process_previous_crises_insights(country_id, disaster_type_id, cache_key)
+            # Process asynchronously using IFRCAPIClient
+            import asyncio
+            result = asyncio.run(self._process_previous_crises_insights(country_id, disaster_type_id, cache_key))
             
             # Track performance
             end_time = datetime.now()
@@ -137,33 +137,58 @@ class PreviousCrisesInsightsView(BaseUCLView):
                 "details": str(e)
             }, status=drf_status.HTTP_500_INTERNAL_SERVER_ERROR)
     
-    def _process_previous_crises_insights(self, country_id: int, disaster_type_id: int, cache_key: str) -> Response:
-        """Process previous crises insights synchronously with caching - exactly like IFRCEventListView"""
+    async def _process_previous_crises_insights(self, country_id: int, disaster_type_id: int, cache_key: str) -> Response:
+        """Process previous crises insights using dedicated task class"""
         
-        # STEP 1: primary (country AND disaster) - use sync method like IFRCEventListView
-        primary = self._fetch_ops_learning(country_id, disaster_type_id)
-        primary_labeled = [
-            {**l, "source_note": "This insight was built off similar disasters from the same country."}
-            for l in primary
-        ]
+        async with IFRCAPIClient() as client:
+            # STEP 1: primary (country AND disaster) 
+            primary = await client.get_ops_learning(country_id, disaster_type_id)
+            primary_labeled = [
+                {**l, "source_note": "This insight was built off similar disasters from the same country."}
+                for l in primary
+            ]
 
-        # STEP 2: fallback (country only)
-        if not primary:
-            secondary = self._fetch_ops_learning(country_id, None)
-        else:
-            all_country = self._fetch_ops_learning(country_id, None)
-            primary_ids = {p['id'] for p in primary}
-            secondary = [l for l in all_country if l['id'] not in primary_ids]
+            # STEP 2: fallback (country only)
+            if not primary:
+                secondary = await client.get_ops_learning(country_id, None)
+            else:
+                all_country = await client.get_ops_learning(country_id, None)
+                primary_ids = {p['id'] for p in primary}
+                secondary = [l for l in all_country if l['id'] not in primary_ids]
 
-        secondary_labeled = [
-            {**l, "source_note": "This insight was built off other disasters from the same country."}
-            for l in secondary
-        ]
+            secondary_labeled = [
+                {**l, "source_note": "This insight was built off other disasters from the same country."}
+                for l in secondary
+            ]
 
-        # STEP 3: Combine both sets of learning and pad out to up to 6 items
-        combined_learning = (primary_labeled + secondary_labeled)[:6]
+            # STEP 3: Combine both sets of learning and pad out to up to 6 items
+            combined_learning = (primary_labeled + secondary_labeled)[:6]
 
-        if not combined_learning:
+            if not combined_learning:
+                return Response({
+                    "ai_structured_summary": [],
+                    "fallback_note": (
+                        "No operational learnings have been recorded in the system for this context yet. "
+                        "You're welcome to check the [Ops Learning dashboard]"
+                        "(https://go.ifrc.org/deployments/ops-learning) "
+                        "and the [IFRC's evaluations database]"
+                        "(https://www.ifrc.org/evaluations) to learn more."
+                    )
+                }, status=drf_status.HTTP_200_OK)
+
+            # STEP 4: Convert raw learning entries into the expected format
+            processed_learnings = [self.previous_crises_task.create_learning_entry(l) for l in combined_learning]
+            for pl in processed_learnings:
+                pl["source_note"] = next(
+                    l["source_note"]
+                    for l in combined_learning
+                    if l["id"] == pl["id"]
+                )
+
+            # STEP 5: Call AI summary generator
+            ai_summary = self.previous_crises_task.generate_ai_summary([{"related_ops_learning": processed_learnings}])
+        
+        if not ai_summary:
             return Response({
                 "ai_structured_summary": [],
                 "fallback_note": (
@@ -174,223 +199,11 @@ class PreviousCrisesInsightsView(BaseUCLView):
                     "(https://www.ifrc.org/evaluations) to learn more."
                 )
             }, status=drf_status.HTTP_200_OK)
-
-        # STEP 4: Convert raw learning entries into the expected format
-        processed_learnings = [self._create_learning_entry(l) for l in combined_learning]
-        for pl in processed_learnings:
-            pl["source_note"] = next(
-                l["source_note"]
-                for l in combined_learning
-                if l["id"] == pl["id"]
-            )
-
-        # STEP 5: Call AI summary generator
-        ai_summary = self._generate_ai_summary([{"related_ops_learning": processed_learnings}])
         
         # Cache result for future requests
-        cache.set(cache_key, ai_summary, timeout=3600)
+        BaseAITask.set_cached_result(cache_key, ai_summary)
         
         return Response({"ai_structured_summary": ai_summary}, status=drf_status.HTTP_200_OK)
-
-    def _fetch_ops_learning(
-        self,
-        country_id: int,
-        disaster_type_id: Optional[int],
-        max_results: int = 6
-    ) -> List[Dict[str, Any]]:
-        """
-        Fetch up to max_results validated learnings for (country + optional dtype),
-        letting the server do the heavy lifting. Copied from IFRCEventListView.
-        """
-        params = {
-            "is_validated": "true",
-            "limit": max_results,
-            "appeal_code__country": country_id,
-        }
-        if disaster_type_id is not None:
-            # actually filter by the nested event dtype field
-            params["appeal__event_details__dtype"] = disaster_type_id
-
-        resp = self._make_api_request(
-            "https://goadmin.ifrc.org/api/v2/ops-learning/",
-            params,
-            "ops learning"
-        ).get("results", [])
-
-        logger.info(f"=== DEBUG: {len(resp)} learnings fetched from API "
-                  f"(country={country_id}, dtype={disaster_type_id}) ===")
-        return resp
-
-    def _make_api_request(self, url: str, params: Dict[str, Any], data_type: str) -> Dict[str, Any]:
-        """Make HTTP request to external API with error handling. Copied from IFRCEventListView."""
-        import httpx
-        try:
-            logger.info(f"=== DEBUG: Making {data_type} request to {url} with params: {params} ===")
-            with httpx.Client(timeout=10.0) as client:
-                response = client.get(url, params=params)
-                response.raise_for_status()
-            
-            results = response.json().get('results', [])
-            logger.info(f"=== DEBUG: {data_type} request returned {len(results)} results ===")
-            
-            return {'results': results}
-        except (httpx.RequestError, httpx.HTTPStatusError, ValueError) as exc:
-            logger.info(f"=== DEBUG: Error in {data_type} request: {exc} ===")
-            return {
-                'error': True,
-                'detail': f'Error fetching {data_type}: {exc}',
-                'results': []
-            }
-
-    def _create_learning_entry(self, learning: Dict[str, Any]) -> Dict[str, Any]:
-        """Create learning entry dict. Copied from IFRCEventListView."""
-        return {
-            'id': learning.get('id'),
-            'learning_text': learning.get('learning_validated_en', learning.get('learning_en')),
-            'document_name': learning.get('document_name'),
-            'document_url': learning.get('document_url'),
-            'sector_validated': learning.get('sector_validated'),
-            'organization_validated': learning.get('organization_validated'),
-            'type_validated': learning.get('type_validated'),
-            'created_at': learning.get('created_at'),
-            'modified_at': learning.get('modified_at'),
-            'appeal_code': learning.get('appeal_code'),
-            'appeal_name': learning.get('appeal', {}).get('name'),
-            'event_id': learning.get('appeal', {}).get('event_details', {}).get('id'),
-        }
-
-    def _generate_ai_summary(self, structured_data):
-        """Generate AI summary using the same method as working IFRCEventListView"""
-        import json
-        from django.conf import settings
-        
-        if not hasattr(self.azure_client, 'client') or not self.azure_client.client:
-            return []
-
-        # 1) Build flat list of learnings
-        all_learnings = [l for e in structured_data for l in e.get('related_ops_learning', [])][:20]
-
-        def truncate(text: str, max_chars: int = 500) -> str:
-            return text if len(text) <= max_chars else text[:max_chars] + "..."
-
-        # 2) System prompt with an explicit example
-        system_message = {
-                "role": "system",
-                "content": (
-                    "You MUST return a JSON array of up to 6 objects, each with a clear suggestion at the end. Each insight **must** merge "
-                    "between **one** and **three** distinct learnings inclusive and be very detailed. "
-                    "The tone should be to help with a current similar crisis.  "
-                    "For each insight also include a short list of 1-2 clear **recommendations** "
-                    "labeled 'recommendations' that follow from the insight.\n\n"
-                    "Example of correct output:\n\n"
-                    "[\n"
-                    "  {\n"
-                    "    \"title\": \"Customizing Data Tools\",\n"
-                    "    \"insight\": \"...\",\n"
-                    "    \"recommendations\": [\n"
-                    "       \"Do X within the first week of response\",\n"
-                    "       \"Train local staff on Y tool\"\n"
-                    "    ],\n"
-                    "    \"source_note\": \"…\",\n"
-                    "    \"metadata\": { … }\n"
-                    "  }\n"
-                    "]\n\n"
-                    "Return ONLY the JSON array (no markdown)."
-                )
-            }
-
-        # 3) Build the user-visible list of learnings
-        learnings_block = "\n".join(
-            f"- ID {l['id']} | Code {l['appeal_code']} | Name {l['appeal_name']} | {l['document_name']}:\n"
-            f"  {truncate(l['learning_text'])}"
-            for l in all_learnings
-        )
-        user_message = {
-            "role": "user",
-            "content": (
-                "Here are the learnings:\n" + learnings_block +
-                "\n\nPlease synthesize up to 6 actionable insights by combining any learnings that share a theme. Explain how the insight is buiilt using the sources and appeal codes"
-                "Each insight must draw on at least two of the above. If the insight is based off different disasters, then try to link it to the current disaster. "
-                "Then for each insight, under a key called `recommendations`, list 1–2 clear next steps that an operational team could take.  "
-                "In `metadata.operational_learning_source` list every source you used (with its `id`, `code`, and `name`).  "
-                "Make each insight no more than 5 sentences, include the country name, and return only valid JSON."
-            )
-        }
-
-        # 4) Call OpenAI using enhanced client
-        raw = self.azure_client.get_response([system_message, user_message], cache_prefix="previous_crises")
-
-        if not raw:
-            return []
-
-        try:
-            clean = raw.strip()
-            if clean.startswith("```"):
-                clean = clean.strip("```").strip()
-            parsed = json.loads(clean)
-        except Exception as e:
-            print("AI parsing error:", e)
-            print("Raw content was:", raw)
-            return [{
-                "title": "ParsingError",
-                "insight": raw.strip(),
-                "metadata": { "operational_learning_source": [] }
-            }]
-
-        out = []
-        for obj in parsed:
-            title = obj.get("title")
-            insight_text = obj.get("insight")
-            recs = obj.get("recommendations", [])
-            meta = obj.get("metadata", {})
-            if not (title and insight_text and isinstance(meta, dict)):
-                continue
-
-            # build the list of source dicts
-            srcs = []
-            for entry in meta.get("operational_learning_source", []):
-                rid = entry["id"] if isinstance(entry, dict) else entry
-                match = next((l for l in all_learnings if str(l["id"]) == str(rid)), None)
-                if not match:
-                    continue
-                srcs.append({
-                    "id":       match["id"],
-                    "code":     match["appeal_code"],
-                    "name":     match["appeal_name"],
-                    "event_id": match.get("event_id"),
-                })
-
-            # if none matched, fall back to first two learnings
-            if not srcs and len(all_learnings) >= 2:
-                for l in all_learnings[:2]:
-                    srcs.append({
-                        "id":       l["id"],
-                        "code":     l["appeal_code"],
-                        "name":     l["appeal_name"],
-                        "event_id": l.get("event_id"),
-                    })
-
-            # New: simple, descriptive source_note
-            insight_source_note = (
-                f"This insight was synthesized from {len(srcs)} operational-learning source"
-                + ("s." if len(srcs) != 1 else ".")
-            )
-
-            out.append({
-                "title":           title,
-                "insight":         insight_text,
-                "recommendations": recs,
-                "source_note":     insight_source_note,
-                "metadata": {
-                    "operational_learning_source": srcs
-                }
-            })
-
-        return out or [{
-            "title": "ParsingError",
-            "insight": raw.strip(),
-            "metadata": { "operational_learning_source": [] }
-        }]
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -411,13 +224,14 @@ class RapidResponseCapacityQuestionsView(BaseUCLView):
 
         # Check cache first for fast response
         cache_key = f"ucl_rr_capacity:{country_id}:{disaster_type_id}"
-        cached_url = cache.get(cache_key)
+        cached_url = BaseAITask.get_cached_result(cache_key)
         if cached_url:
             return Response({"file_url": cached_url}, status=drf_status.HTTP_200_OK)
 
         try:
-            # Process using the dedicated parser (now synchronous)
-            result = self._process_rr_capacity_questions(country_id, disaster_type_id, cache_key)
+            # Process using the dedicated parser with async API calls
+            import asyncio
+            result = asyncio.run(self._process_rr_capacity_questions(country_id, disaster_type_id, cache_key))
             
             # Track performance
             end_time = datetime.now()
@@ -437,12 +251,20 @@ class RapidResponseCapacityQuestionsView(BaseUCLView):
                 status=drf_status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
     
-    def _process_rr_capacity_questions(self, country_id: int, disaster_type_id: int, cache_key: str) -> Response:
+    async def _process_rr_capacity_questions(self, country_id: int, disaster_type_id: int, cache_key: str) -> Response:
         """Process RR capacity questions using the dedicated parser"""
-        parser = RapidResponseCapacityParser()
         
         try:
-            blob_url = parser.process_rr_capacity_questions(country_id, disaster_type_id, cache_key)
+            # Fetch data using IFRCAPIClient
+            async with IFRCAPIClient() as client:
+                ops_learning_data = await self._fetch_rr_ops_learning_data(client, country_id, disaster_type_id)
+                events_data = await self._fetch_events_from_ops_learning(client, ops_learning_data)
+            
+            # Process using the dedicated parser
+            parser = RapidResponseCapacityParser()
+            blob_url = parser.process_rr_capacity_questions_with_data(
+                country_id, disaster_type_id, cache_key, ops_learning_data, events_data
+            )
             return Response({"file_url": blob_url}, status=drf_status.HTTP_200_OK)
             
         except Exception as e:
@@ -451,6 +273,145 @@ class RapidResponseCapacityQuestionsView(BaseUCLView):
                 {"detail": f"Error processing RR capacity questions: {str(e)}"},
                 status=drf_status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+    
+    async def _fetch_rr_ops_learning_data(
+        self, 
+        client: IFRCAPIClient, 
+        country_id: int, 
+        disaster_type_id: int, 
+        target_count: int = 10
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch ops-learning data using two-stage approach.
+        
+        STAGE 1: Fetch using both country and disaster type filters
+        STAGE 2: If fewer results, fetch additional using only country filter
+        """
+        from typing import Set
+        
+        # STAGE 1: Primary batch with both filters
+        primary_batch = await client.get_ops_learning(
+            country_id=country_id,
+            disaster_type_id=disaster_type_id,
+            max_results=10
+        )
+        
+        primary_labeled = [
+            {**l, "source_note": "This insight was built off similar disasters from the same country."}
+            for l in primary_batch
+        ]
+        
+        # Track appeal codes to avoid duplicates
+        seen_appeal_codes: Set[str] = set()
+        deduplicated_results = []
+        
+        # Add primary results and track their appeal codes
+        for learning in primary_labeled:
+            appeal_info = learning.get('appeal', {})
+            if isinstance(appeal_info, dict):
+                appeal_code = appeal_info.get('code')
+            else:
+                appeal_code = str(appeal_info) if appeal_info else None
+            
+            if appeal_code and appeal_code not in seen_appeal_codes:
+                seen_appeal_codes.add(appeal_code)
+                deduplicated_results.append(learning)
+            elif not appeal_code:
+                deduplicated_results.append(learning)
+        
+        # STAGE 2: If we need more results, fetch country-only data
+        if len(deduplicated_results) < 10:
+            remaining_needed = 10 - len(deduplicated_results)
+            secondary_batch = await client.get_ops_learning(
+                country_id=country_id,
+                disaster_type_id=None,
+                max_results=remaining_needed * 4
+            )
+            
+            # Filter secondary batch to only include the specific disaster type
+            filtered_secondary = []
+            for learning in secondary_batch:
+                appeal_info = learning.get('appeal', {})
+                if isinstance(appeal_info, dict):
+                    appeal_dtype = appeal_info.get('dtype', {})
+                    if isinstance(appeal_dtype, dict):
+                        dtype_id = appeal_dtype.get('id')
+                        if dtype_id == disaster_type_id:
+                            filtered_secondary.append(learning)
+            
+            secondary_labeled = [
+                {**l, "source_note": "This insight was built off similar disasters from the same country."}
+                for l in filtered_secondary
+            ]
+            
+            # Add secondary results, avoiding duplicates
+            for learning in secondary_labeled:
+                if len(deduplicated_results) >= 10:
+                    break
+                    
+                appeal_info = learning.get('appeal', {})
+                if isinstance(appeal_info, dict):
+                    appeal_code = appeal_info.get('code')
+                else:
+                    appeal_code = str(appeal_info) if appeal_info else None
+                
+                if appeal_code and appeal_code not in seen_appeal_codes:
+                    seen_appeal_codes.add(appeal_code)
+                    deduplicated_results.append(learning)
+                elif not appeal_code and len(deduplicated_results) < 10:
+                    deduplicated_results.append(learning)
+        
+        return deduplicated_results[:10]
+    
+    async def _fetch_events_from_ops_learning(
+        self, 
+        client: IFRCAPIClient, 
+        ops_learning_data: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Fetch events directly using event_details.id from ops learning data."""
+        from typing import Set
+        
+        events = []
+        seen_event_ids: Set[int] = set()
+        
+        if not ops_learning_data:
+            return events
+        
+        for learning in ops_learning_data:
+            if not isinstance(learning, dict):
+                continue
+                
+            appeal_info = learning.get('appeal', {})
+            if not isinstance(appeal_info, dict):
+                continue
+                
+            event_details = appeal_info.get('event_details', {})
+            if not isinstance(event_details, dict):
+                continue
+                
+            event_id = event_details.get('id')
+            appeal_code = appeal_info.get('code')
+            
+            if not event_id or event_id in seen_event_ids:
+                continue
+                
+            seen_event_ids.add(event_id)
+            
+            # Fetch event directly by ID
+            try:
+                event = await client.get_event_detail(event_id)
+                
+                if event:
+                    # Add source information to the event
+                    event["source_note"] = f"Event from ops learning (Appeal: {appeal_code}, Event ID: {event_id})"
+                    event["appeal_source"] = appeal_code
+                    event["event_source_id"] = event_id
+                    events.append(event)
+                    
+            except Exception:
+                continue  # Skip failed requests
+        
+        return events
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -475,7 +436,7 @@ class DrefSummaryView(BaseUCLView):
         
         # Check cache first for fast response
         cache_key = f"ucl_dref_summary:{event_id}"
-        cached_result = cache.get(cache_key)
+        cached_result = BaseAITask.get_cached_result(cache_key)
         if cached_result is not None:
             return Response(cached_result, status=drf_status.HTTP_200_OK)
 
@@ -568,7 +529,8 @@ class DrefSummaryView(BaseUCLView):
                 op_update_number = getattr(first_update, 'operational_update_number', 1)
 
             # Step 6: Generate summaries using existing DrefSummaryTask (exact same)
-            summaries = DrefSummaryTask.generate_dref_summaries(dref_dict)
+            dref_summary_task = DrefSummaryTask()
+            summaries = dref_summary_task.generate_dref_summaries(dref_dict)
             
             # Step 7: Prepare response data (exact same format)
             sectors_data = summaries.get("sectors", [])
@@ -589,7 +551,7 @@ class DrefSummaryView(BaseUCLView):
             }
             
             # Cache result
-            cache.set(cache_key, summary_data, timeout=3600)
+            BaseAITask.set_cached_result(cache_key, summary_data)
             
             # Return serialized response (exact same as original)
             serializer = PerDrefLLMSummarySerializer(summary_data)
@@ -615,7 +577,7 @@ class DrefSituationalOverviewView(BaseUCLView):
         
         # Check cache first for fast response
         cache_key = f"ucl_dref_situational:{event_id}"
-        cached_result = cache.get(cache_key)
+        cached_result = BaseAITask.get_cached_result(cache_key)
         if cached_result is not None:
             return Response(cached_result, status=drf_status.HTTP_200_OK)
 
@@ -696,7 +658,8 @@ class DrefSituationalOverviewView(BaseUCLView):
             }
 
             # Step 6: Generate situational overview (exact same as original)
-            situational_overview = DrefSummaryTask.generate_situational_overview(latest_update_dict)
+            dref_summary_task = DrefSummaryTask()
+            situational_overview = dref_summary_task.generate_situational_overview(latest_update_dict)
             
             if not situational_overview:
                 return Response({
@@ -728,7 +691,7 @@ class DrefSituationalOverviewView(BaseUCLView):
             }
             
             # Cache result
-            cache.set(cache_key, response_data, timeout=3600)
+            BaseAITask.set_cached_result(cache_key, response_data)
             
             # Return serialized response (exact same as original)
             serializer = PerDrefSituationalOverviewSerializer(response_data)
