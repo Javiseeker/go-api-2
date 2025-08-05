@@ -15,6 +15,7 @@ Views included:
 
 import asyncio
 import os
+from django.conf import settings
 from tempfile import NamedTemporaryFile
 from typing import Any, Optional
 
@@ -104,15 +105,16 @@ class PreviousCrisesInsightsView(BaseUCLView):
         super().__init__(*args, **kwargs)
         self.azure_client = EnhancedAzureOpenAiChat()
 
-        # load JSON from a simple relative path
+        # load JSON from project root
+        json_path = os.path.join(settings.BASE_DIR, 'rr_parsed_excel.json')
+        logger.debug(f"[RR TEMPLATE] loading from {json_path} (exists={os.path.exists(json_path)})")
         try:
-            here = os.path.dirname(__file__)
-            path = os.path.join(here, 'rr_parsed_excel.json')
-            with open(path, 'r', encoding='utf-8') as f:
+            with open(json_path, 'r', encoding='utf-8') as f:
                 self.rr_template = json.load(f)
-        except Exception:
+            logger.debug(f"[RR TEMPLATE] loaded {len(self.rr_template)} entries")
+        except Exception as e:
             self.rr_template = []
-            logger.warning("Could not load RR questions template JSON")
+            logger.warning(f"Could not load RR questions template JSON from {json_path}: {e}")
 
     def get(self, request) -> Response:
         start_time = datetime.now()
@@ -147,52 +149,78 @@ class PreviousCrisesInsightsView(BaseUCLView):
     def _process_previous_crises_insights(
         self, country_id: int, disaster_type_id: int, cache_key: str
     ) -> Response:
-        # STEP 1–4: exactly as before: fetch primary/secondary, combine & slice
+        # 1) fetch primary & secondary learnings
         primary = self._fetch_ops_learning(country_id, disaster_type_id)
-        secondary = (
-            self._fetch_ops_learning(country_id, None)
-            if not primary
-            else [
-                l for l in self._fetch_ops_learning(country_id, None)
-                if l["id"] not in {p["id"] for p in primary}
-            ]
-        )
+        if not primary:
+            secondary = self._fetch_ops_learning(country_id, None)
+        else:
+            all_country = self._fetch_ops_learning(country_id, None)
+            p_ids = {p["id"] for p in primary}
+            secondary = [l for l in all_country if l["id"] not in p_ids]
         combined = (primary + secondary)[:6]
         if not combined:
             return Response({"ai_structured_summary": []}, status=drf_status.HTTP_200_OK)
 
-        # Convert to the minimal entries for the AI
+        # 2) minimal entries
         processed_learnings = [self._create_learning_entry(l) for l in combined]
 
-        # STEP 5a: Generate the original insights
+        import httpx
+
+        for pl in processed_learnings:
+            ev_id = pl.get("event_id")
+            event = {}
+            if ev_id:
+                try:
+                    logger.debug(f"[EVENT] querying /api/v2/event/?id={ev_id}")
+                    with httpx.Client(timeout=10.0) as client:
+                        r = client.get(
+                            "https://goadmin.ifrc.org/api/v2/event/",
+                            params={"id": ev_id}
+                        )
+                        r.raise_for_status()
+                        payload = r.json().get("results", [])
+                    if payload and isinstance(payload, list) and isinstance(payload[0], dict):
+                        event = payload[0]
+                        logger.debug(f"[EVENT] loaded event {ev_id}: {event.get('name')!r}")
+                    else:
+                        logger.warning(f"[EVENT] no event in results for id={ev_id}")
+                except Exception as e:
+                    logger.warning(f"[EVENT] failed to fetch event?id={ev_id}: {e}")
+
+            pl["event"] = {
+                "id":          event.get("id"),
+                "name":        event.get("name"),
+                "dtype":       (event.get("dtype") or {}).get("name"),
+                "start":       event.get("disaster_start_date"),
+                "countries":   [c.get("name") for c in event.get("countries", [])]
+                                if isinstance(event.get("countries"), list) else [],
+                "description": event.get("description") or event.get("summary") or ""
+            }
+
+        # 3) generate AI insights
         ai_insights = self._generate_ai_summary([{"related_ops_learning": processed_learnings}])
-        # ai_insights: a list of dicts with keys: title, insight, recommendations, source_note, metadata
 
-        # STEP 5b: Generate RR questions based on those same insights
-        # We pass the exact same shape so the RR helper can read titles & insights
-        rr_payload = [{"related_ops_learning": ai_insights}]
-        rr_results = self._generate_rr_questions(rr_payload)
-        # rr_results: list of {title, insight, area, rr_questions}
+        # 4) generate RR questions
+        rr_results = self._generate_rr_questions([{"related_ops_learning": ai_insights}])
 
-        # STEP 6: Merge them by title
-        merged = []
-        # Build a lookup by title for quick match
+        # 5) merge by title
         rr_by_title = {r["title"]: r for r in rr_results}
-        for insight_obj in ai_insights:
-            title = insight_obj["title"]
-            rr = rr_by_title.get(title, {})
+        merged = []
+        for obj in ai_insights:
+            rr = rr_by_title.get(obj["title"], {})
             merged.append({
-                "title":        title,
-                "insight":      insight_obj["insight"],
-                "area":         rr.get("area"),                  # from your RR mapping
+                "title":        obj["title"],
+                "insight":      obj["insight"],
+                "area":         rr.get("area"),
                 "rr_questions": rr.get("rr_questions", []),
-                "source_note":  insight_obj.get("source_note"),
-                "metadata":     insight_obj.get("metadata", {}),
+                "source_note":  obj.get("source_note"),
+                "metadata":     obj.get("metadata", {}),
             })
 
-        # Cache & return under the same key
+        # 6) cache & return
         cache.set(cache_key, merged, timeout=3600)
         return Response({"ai_structured_summary": merged}, status=drf_status.HTTP_200_OK)
+
 
     def _fetch_ops_learning(
         self,
@@ -311,7 +339,7 @@ class PreviousCrisesInsightsView(BaseUCLView):
             "role": "user",
             "content": (
                 "Here are the learnings:\n" + learnings_block +
-                "\n\nPlease synthesize up to 6 actionable insights by combining any learnings that share a theme. Explain how the insight is buiilt using the sources and appeal codes"
+                "\n\nThe language should be very detailed. Please synthesize up to 6 actionable insights by combining any learnings that share a theme. Explain how the insight is buiilt using the sources and appeal codes. Also make sure you use event details such as description, disaster and country to help with generating the insight. "
                 "Each insight must draw on at least two of the above. If the insight is based off different disasters, then try to link it to the current disaster. "
                 "Then for each insight, under a key called `recommendations`, list 1–2 clear next steps that an operational team could take.  "
                 "In `metadata.operational_learning_source` list every source you used (with its `id`, `code`, and `name`).  "
