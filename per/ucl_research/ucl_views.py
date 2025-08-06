@@ -326,7 +326,7 @@ class RapidResponseCapacityQuestionsView(BaseUCLView):
         Fetch ops-learning data using two-stage approach.
         
         STAGE 1: Fetch using both country and disaster type filters
-        STAGE 2: If fewer results, fetch additional using only country filter
+        STAGE 2: If fewer results, fill remaining with country-only data (any disaster type)
         """
         from typing import Set
         
@@ -360,34 +360,23 @@ class RapidResponseCapacityQuestionsView(BaseUCLView):
             elif not appeal_code:
                 deduplicated_results.append(learning)
         
-        # STAGE 2: If we need more results, fetch country-only data
-        if len(deduplicated_results) < 10:
-            remaining_needed = 10 - len(deduplicated_results)
+        # STAGE 2: If we need more results, fetch country-only data (any disaster type)
+        if len(deduplicated_results) < target_count:
+            remaining_needed = target_count - len(deduplicated_results)
             secondary_batch = await client.get_ops_learning(
                 country_id=country_id,
-                disaster_type_id=None,
-                max_results=remaining_needed * 4
+                disaster_type_id=None,  # No disaster type filter - get any disaster type for this country
+                max_results=remaining_needed
             )
-            
-            # Filter secondary batch to only include the specific disaster type
-            filtered_secondary = []
-            for learning in secondary_batch:
-                appeal_info = learning.get('appeal', {})
-                if isinstance(appeal_info, dict):
-                    appeal_dtype = appeal_info.get('dtype', {})
-                    if isinstance(appeal_dtype, dict):
-                        dtype_id = appeal_dtype.get('id')
-                        if dtype_id == disaster_type_id:
-                            filtered_secondary.append(learning)
             
             secondary_labeled = [
                 {**l, "source_note": "This insight was built off similar disasters from the same country."}
-                for l in filtered_secondary
+                for l in secondary_batch
             ]
             
             # Add secondary results, avoiding duplicates
             for learning in secondary_labeled:
-                if len(deduplicated_results) >= 10:
+                if len(deduplicated_results) >= target_count:
                     break
                     
                 appeal_info = learning.get('appeal', {})
@@ -399,10 +388,10 @@ class RapidResponseCapacityQuestionsView(BaseUCLView):
                 if appeal_code and appeal_code not in seen_appeal_codes:
                     seen_appeal_codes.add(appeal_code)
                     deduplicated_results.append(learning)
-                elif not appeal_code and len(deduplicated_results) < 10:
+                elif not appeal_code and len(deduplicated_results) < target_count:
                     deduplicated_results.append(learning)
         
-        return deduplicated_results[:10]
+        return deduplicated_results[:target_count]
     
     async def _fetch_events_from_ops_learning(
         self, 
