@@ -2054,9 +2054,9 @@ class RRCapacityTask(BaseAITask):
             {"role": "system", "content": system_prompt},
             # Few-shot example to anchor the format
             {"role": "assistant", "content": 
-                "LEGAL FRAMEWORK: National Disaster Management Act 2019 establishes Red Cross auxiliary status with government coordination mandate (Reference: MDRBGD025 – Bangladesh Cyclone Response, 15 January 2024)\n"
-                "OPERATIONAL CAPACITY: Field Report FR-2023-000045 documents 1,200 volunteers deployed across 8 districts with 25,000 beneficiaries reached (Reference: MDRBGD025 – Bangladesh Cyclone Response, 18 January 2024)\n"
-                "COORDINATION GAPS: Ops-learning from MDRBGD024 identifies 5-day delay in government liaison compared to previous response cycle (Reference: MDRBGD024 – Flood Response Review, 10 November 2023)"
+                "Legal framework: National Disaster Management Act 2019 establishes Red Cross auxiliary status with government coordination mandate (Reference: MDRBGD025 – Bangladesh Cyclone Response, 15 January 2024)\n"
+                "Operational capacity: Field Report FR-2023-000045 documents 1,200 volunteers deployed across 8 districts with 25,000 beneficiaries reached (Reference: MDRBGD025 – Bangladesh Cyclone Response, 18 January 2024)\n"
+                "Coordination gaps: Ops-learning from MDRBGD024 identifies 5-day delay in government liaison compared to previous response cycle (Reference: MDRBGD024 – Flood Response Review, 10 November 2023)"
             },
             {
                 "role": "user",
@@ -2189,7 +2189,7 @@ class RRCapacityTask(BaseAITask):
             f"- NEVER use information from your training data or general knowledge\n"
             f"- If insufficient source data, respond: 'Enough source is not available to answer this question'\n"
             f"- Each bullet MUST include specific facts (numbers, dates, places, named units) from sources\n"
-            f"- Format: UPPERCASE LABEL: analysis with specific facts (Reference: CODE – Event, Date)\n"
+            f"- Format: Label: analysis with specific facts (Reference: CODE – Event, Date)\n"
             f"- Generate 3-4 bullets with diverse analytical perspectives\n"
             f"- Plain text only, no markdown\n\n"
         )
