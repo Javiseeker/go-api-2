@@ -50,7 +50,6 @@ per/ucl_research/
 - **Views → Task Classes**: Views handle HTTP logic, task classes handle business logic
 - **Unified Caching**: All endpoints use Redis via `BaseAITask.get_cached_result/set_cached_result`
 - **Async API Calls**: All external requests use `IFRCAPIClient` with connection pooling
-- **Confidence Scoring**: All responses include AI confidence assessment (`high/medium/low`)
 
 ## Endpoint Details
 
@@ -72,7 +71,7 @@ disaster_type_id = int(request.query_params.get('disaster_type'))  # Disaster Ty
 cache_key = f"ucl_previous_crises:{country_id}:{disaster_type_id}"
 cached_result = BaseAITask.get_cached_result(cache_key)
 if cached_result:
-    return Response({"ai_structured_summary": cached_result, "confidence_score": cached_result.get("confidence_score")}, 200)
+    return Response({"ai_structured_summary": cached_result}, 200)
 ```
 
 **Phase 2: Multi-Tier Operational Learning Fetch Strategy**
@@ -155,22 +154,12 @@ ai_summary = self.previous_crises_task.generate_ai_summary([{
 # 2. Pattern recognition across multiple disasters  
 # 3. Actionable insight generation
 # 4. Source traceability maintenance
-# 5. Confidence scoring per insight
 ```
 
-**Phase 5: Confidence Assessment & Response Assembly**
+**Phase 5: Response Assembly**
 ```python
-# Calculate confidence score based on data quality and AI response
-confidence_score = BaseAITask.calculate_confidence_score(
-    ai_response=str(ai_summary),
-    source_data_count=len(combined_learning),
-    has_specific_facts=any('based on' in str(item).lower() for item in ai_summary if isinstance(item, dict)),
-    response_length=len(str(ai_summary))
-)
-
 response_data = {
-    "ai_structured_summary": ai_summary,
-    "confidence_score": confidence_score
+    "ai_structured_summary": ai_summary
 }
 
 # Cache result for future requests (1-hour TTL)
@@ -185,7 +174,6 @@ BaseAITask.set_cached_result(cache_key, response_data)
       "id": 1,
       "title": "Early Warning Systems Effectiveness",
       "content": "Analysis of 3 flood operations in Bangladesh (2021-2023) shows early warning systems reduced casualty rates by 40% when implemented 48+ hours before peak flooding. Community-based warning networks proved most effective in rural areas.",
-      "confidence_level": "high",
       "source_learnings": [
         {
           "id": 1234,
@@ -196,8 +184,7 @@ BaseAITask.set_cached_result(cache_key, response_data)
         }
       ]
     }
-  ],
-  "confidence_score": "high"
+  ]
 }
 ```
 
@@ -220,7 +207,7 @@ country_id, disaster_type_id = validate_country_disaster_params(request)
 cache_key = f"ucl_rr_capacity:{country_id}:{disaster_type_id}"
 cached_url = BaseAITask.get_cached_result(cache_key)
 if cached_url:
-    return Response({"file_url": cached_url, "confidence_score": "high"}, 200)
+    return Response({"file_url": cached_url}, 200)
 ```
 
 **Phase 2: Questions Template Loading**
@@ -485,15 +472,7 @@ with NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
 blob_url = upload_to_blob(temp_path, blob_name=filename)
 os.remove(temp_path)  # Cleanup
 
-# Calculate confidence score based on data availability
-confidence_score = BaseAITask.calculate_confidence_score(
-    ai_response=f"Excel file generated with {len(ops_learning_data)} ops learning entries",
-    source_data_count=len(ops_learning_data) + len(events_data),
-    has_specific_facts=len(ops_learning_data) > 0,
-    response_length=100  # Standard length for file generation
-)
-
-response_data = {"file_url": blob_url, "confidence_score": confidence_score}
+response_data = {"file_url": blob_url}
 
 # Cache URL for 1 hour
 BaseAITask.set_cached_result(cache_key, response_data)
@@ -502,8 +481,7 @@ BaseAITask.set_cached_result(cache_key, response_data)
 **Response Structure**:
 ```json
 {
-  "file_url": "https://storage.blob.core.windows.net/ucl-research-reports/rr_capacity_filled_194_12.xlsx",
-  "confidence_score": "medium"
+  "file_url": "https://storage.blob.core.windows.net/ucl-research-reports/rr_capacity_filled_194_12.xlsx"
 }
 ```
 
@@ -669,16 +647,9 @@ cost_per_beneficiary = (
 )
 ```
 
-**Phase 7: Confidence Assessment & Response Assembly**
+**Phase 7: Response Assembly**
 ```python
-# Calculate confidence score based on DREF data completeness
 sectors_data = summaries.get("sectors", [])
-confidence_score = BaseAITask.calculate_confidence_score(
-    ai_response=str(summaries.get("operational_summary", "")),
-    source_data_count=len(sectors_data),
-    has_specific_facts=len(str(summaries.get("operational_summary", ""))) > 100,
-    response_length=len(str(summaries.get("operational_summary", "")))
-)
 
 # Economic sector-focused response structure
 summary_data = {
@@ -691,9 +662,6 @@ summary_data = {
     # DREF Classification
     "dref_type": latest_dref_version.type_of_dref_display if hasattr(latest_dref_version, 'type_of_dref_display') else "",
     "dref_onset": latest_dref_version.type_of_onset_display if hasattr(latest_dref_version, 'type_of_onset_display') else "",
-    
-    # Confidence assessment
-    "confidence_score": confidence_score,
     
     # Economic & Operational Metadata
     "metadata": {
@@ -761,7 +729,6 @@ return Response(serializer.data, 200)
   
   "dref_type": "Sudden Onset Emergency",
   "dref_onset": "Rapid",
-  "confidence_score": "high",
   
   "metadata": {
     "dref_id": 12345,
@@ -871,15 +838,8 @@ if not situational_overview:
     }, 500)
 ```
 
-**Phase 6: Event-Centric Metadata Assembly & Confidence Assessment**
+**Phase 6: Event-Centric Metadata Assembly**
 ```python
-# Calculate confidence score based on operational update availability
-confidence_score = BaseAITask.calculate_confidence_score(
-    ai_response=str(situational_overview),
-    source_data_count=len(getattr(dref_data, 'operational_update_details', [])),
-    has_specific_facts='based on' in str(situational_overview).lower(),
-    response_length=len(str(situational_overview))
-)
 
 # Calculate temporal context
 def calculate_days_between(start_date, end_date):
@@ -895,7 +855,6 @@ days_since_event = calculate_days_between(
 # Metadata structure focused on situational context
 response_data = {
     "situational_overview": situational_overview,
-    "confidence_score": confidence_score,
     
     "metadata": {
         # Event-focused information (primary context)
@@ -961,8 +920,6 @@ Line 5: "This coordinated approach leverages pre-positioned emergency stocks and
 {
   "situational_overview": "Severe flooding across 8 districts in northern Bangladesh has affected over 2.3 million people, with 450,000 displaced from their homes as of August 15, 2024. River levels remain above danger marks in Sylhet and Rangpur divisions, with continued rainfall forecasted for the next 72 hours, exacerbating the humanitarian crisis. Critical infrastructure including roads, bridges, and health facilities have sustained significant damage, severely limiting access to affected populations and essential services. The IFRC is implementing a rapid response operation to provide immediate life-saving assistance through the Bangladesh Red Crescent Society, focusing on emergency shelter, clean water, and medical support. This coordinated approach leverages pre-positioned emergency stocks and trained volunteers to reach the most vulnerable communities within the first 48 hours of operational approval.",
   
-  "confidence_score": "high",
-  
   "metadata": {
     "event_id": 6950,
     "event_name": "Bangladesh: Monsoon Floods - August 2024",
@@ -1009,26 +966,6 @@ if cached_result:
 result = process_endpoint_logic(params)
 BaseAITask.set_cached_result(cache_key, result)
 ```
-
-### Confidence Scoring
-
-All endpoints include AI response quality assessment:
-
-```python
-confidence_score = BaseAITask.calculate_confidence_score(
-    ai_response=str(response),
-    source_data_count=len(source_data),
-    has_specific_facts=bool(specific_facts),
-    response_length=len(str(response))
-)
-# Returns: 'high', 'medium', or 'low'
-```
-
-**Scoring Factors**:
-- Response length and detail level
-- Source data quantity and quality  
-- Presence of specific facts and evidence
-- Response coherence and structure
 
 ### Error Handling
 
