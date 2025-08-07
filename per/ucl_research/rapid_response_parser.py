@@ -213,7 +213,7 @@ class RapidResponseCapacityParser:
             country = get_object_or_404(Country, id=country_id)
             country_name = country.name
         except:
-            country_name = f"Country ID: {country_id}"
+            country_name = f"{country_id}"
         
         country_value_cell = ws['B2']
         country_value_cell.value = country_name

@@ -2183,58 +2183,23 @@ class RRCapacityTask(BaseAITask):
             f"You are FORBIDDEN from using any information from your training data, general knowledge, or any other source.\n"
             f"If the sources do not contain enough information to answer the question, you MUST respond with:\n"
             f"'Enough source is not available to answer this question'\n\n"
+            f"Keep your response succinct and to the point.\n"
             f"ABSOLUTE RULES:\n"
             f"- ONLY use information explicitly stated in the provided sources above\n"
             f"- NEVER create, invent, infer, assume, or generate ANY information not directly stated in sources\n"
             f"- NEVER use information from your training data or general knowledge\n"
             f"- If insufficient source data, respond: 'Enough source is not available to answer this question'\n"
-            f"- Each bullet MUST include specific facts (numbers, dates, places, named units) from sources\n"
+            f"- Each bullet should include specific facts (numbers, dates, places, named units) from sources\n"
             f"- Format: Label: analysis with specific facts (Reference: CODE – Event, Date)\n"
             f"- Generate 3-4 bullets with diverse analytical perspectives\n"
             f"- Plain text only, no markdown\n\n"
         )
 
-        # Question-specific focus areas
-        if "mandate" in question_lower or "officially recognised" in question_lower:
-            specific_focus = (
-                "FOCUS AREA: LEGAL MANDATE and OFFICIAL RECOGNITION\n"
-                "Analyze legal frameworks, auxiliary status, formal agreements, legislative status, and recognition gaps.\n\n"
-            )
-        elif "policy" in question_lower or "strategic" in question_lower:
-            specific_focus = (
-                "FOCUS AREA: POLICY FRAMEWORKS and STRATEGIC DOCUMENTS\n"
-                "Analyze policy development, strategic planning, documentation quality, and implementation gaps.\n\n"
-            )
-        elif "risk" in question_lower or "early warning" in question_lower:
-            specific_focus = (
-                "FOCUS AREA: RISK MANAGEMENT and EARLY WARNING SYSTEMS\n"
-                "Analyze risk assessment capabilities, monitoring systems, warning mechanisms, and preparedness.\n\n"
-            )
-        elif "business continuity" in question_lower or "continuity plan" in question_lower:
-            specific_focus = (
-                "FOCUS AREA: BUSINESS CONTINUITY and OPERATIONAL RESILIENCE\n"
-                "Analyze continuity planning, resilience measures, crisis management, and recovery procedures.\n\n"
-            )
-        elif "operations management" in question_lower or "coordination systems" in question_lower:
-            specific_focus = (
-                "FOCUS AREA: OPERATIONS MANAGEMENT and COORDINATION SYSTEMS\n"
-                "Analyze management structures, coordination mechanisms, operational procedures, and system effectiveness.\n\n"
-            )
-        elif "information" in question_lower or "data" in question_lower:
-            specific_focus = (
-                "FOCUS AREA: INFORMATION MANAGEMENT and DATA SYSTEMS\n"
-                "Analyze data collection, information sharing, integration, and reporting capabilities.\n\n"
-            )
-        elif "coordination" in question_lower and ("mechanisms" in question_lower or "relationships" in question_lower):
-            specific_focus = (
-                "FOCUS AREA: COORDINATION MECHANISMS and INTER-AGENCY RELATIONSHIPS\n"
-                "Analyze structures, partnership frameworks, communication channels, and collaboration effectiveness.\n\n"
-            )
-        else:
-            specific_focus = (
-                "FOCUS AREA: CAPACITY ASSESSMENT\n"
-                "Analyze the specific capacity referenced by the question with concrete, context-grounded insights.\n\n"
-            )
+        # Generic focus area
+        specific_focus = (
+            "FOCUS AREA: Capacity Assessment\n"
+            "Analyze the specific capacity referenced by the question with concrete, context-grounded insights.\n\n"
+        )
 
         # Final requirements
         requirements = (
