@@ -77,7 +77,7 @@ class PerformanceMonitor:
 
 
 class BaseAITask:
-    """Base class with Azure OpenAI integration and common utilities for AI-powered tasks"""
+    """Base class with Azure OpenAI integration and common utilities for automated tasks"""
     
     ENCODING_NAME = "cl100k_base"
     MAX_RETRIES = 3
@@ -141,7 +141,7 @@ class BaseAITask:
     
     
     def get_azure_response(self, messages: List[Dict[str, str]], cache_prefix: str = "ops_learning") -> Optional[str]:
-        """Get Azure OpenAI response with enhanced caching and error handling"""
+        """Get model response with enhanced caching and error handling"""
         start_time = datetime.now()
         
         # Generate new response with retries
@@ -163,7 +163,7 @@ class BaseAITask:
                 return response_content
                 
             except Exception as e:
-                logger.warning(f"Azure OpenAI attempt {attempt + 1} failed for {cache_prefix}: {e}")
+                logger.warning(f"Model attempt {attempt + 1} failed for {cache_prefix}: {e}")
                 if attempt == self.MAX_RETRIES - 1:
                     logger.error(f"All {self.MAX_RETRIES} attempts failed for {cache_prefix}: {e}")
                     return None
@@ -472,7 +472,7 @@ class OpsLearningSummaryTask(BaseAITask):
                     logger.warning("The length of the prompt might be too long.")
                     return "{}"
 
-                # Using Enhanced Azure OpenAI to summarize the prompt
+                # Using the model backend to summarize the prompt
                 response = self.get_azure_response(messages, cache_prefix=f"ops_summary_{type.name}")
                 return response or "{}"
                 
@@ -1309,7 +1309,7 @@ class OpsLearningSummaryTask(BaseAITask):
     @classmethod
     def generate_previous_crises_insights(cls, learning_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        Generate AI-powered insights from operational learning data for Previous Crises endpoint.
+        Generate automated insights from operational learning data for Previous Crises endpoint.
         Moved from azure_service.py to centralize all Azure OpenAI logic in the correct class.
         """
         logger.info(f"Generating previous crises insights from {len(learning_data)} learning items")
@@ -1349,11 +1349,11 @@ Structure each insight as a numbered item with title and detailed content.
             
             logger.info(f"Generated previous crises prompt: {len(prompt)} characters")
             
-            # Generate using existing Azure OpenAI infrastructure
+            # Generate using existing model infrastructure
             response = cls.generate_summary(prompt, OpsLearningPromptResponseCache.PromptType.PREVIOUS_CRISES)
             
             if not response or 'content' not in response:
-                logger.warning("No valid response from Azure OpenAI for previous crises insights")
+                logger.warning("No valid model response for previous crises insights")
                 return []
             
             content = response['content']
@@ -1373,7 +1373,7 @@ Structure each insight as a numbered item with title and detailed content.
     
     @classmethod
     def _parse_previous_crises_response(cls, content: str, learning_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Parse AI response for previous crises insights into structured format"""
+        """Parse model response for previous crises insights into structured format"""
         try:
             insights = []
             sections = content.split('\n\n')
@@ -1491,7 +1491,7 @@ class DrefSummaryTask(BaseAITask):
                 truncated_data = data_json[:self.PROMPT_DATA_LENGTH_LIMIT]
                 messages[1]["content"] = f"DREF Data to analyze:\n{truncated_data}\n\n{self.operational_summary_prompt}"
             
-            # Call OpenAI backend
+            # Call model backend
             response = self.get_azure_response(messages, cache_prefix="dref_operational")
             
             if not response:
@@ -1572,7 +1572,7 @@ class DrefSummaryTask(BaseAITask):
                 
                 return result
             else:
-                logger.warning("Empty response from Azure OpenAI for situational overview")
+                logger.warning("Empty model response for situational overview")
                 return None
                 
         except Exception as e:
@@ -1997,12 +1997,12 @@ class DrefSummaryTask(BaseAITask):
 
 
 class RRCapacityTask(BaseAITask):
-    """Handles RR capacity questions: builds prompts, calls the model, and formats output."""
+    """Processes Rapid Response capacity questions and returns structured notes."""
 
     def process_capacity_question(
         self, question_data: Dict[str, Any], event_data: List[Dict[str, Any]], ops_learning_data: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Optional[str]]:
-        """Return notes for a single RR capacity question."""
+        """Generate notes for a single Rapid Response capacity question."""
         if ops_learning_data is None:
             ops_learning_data = []
 
@@ -2015,7 +2015,7 @@ class RRCapacityTask(BaseAITask):
     def generate_response_notes(
         self, question_data: Dict[str, Any], event_data: List[Dict[str, Any]], ops_learning_data: Optional[List[Dict[str, Any]]] = None
     ) -> Optional[str]:
-        """Generate notes using event and ops-learning data."""
+        """Generate notes using event data and operational learnings provided as input."""
         if ops_learning_data is None:
             ops_learning_data = []
 
@@ -2025,59 +2025,75 @@ class RRCapacityTask(BaseAITask):
         examples = question_data.get("Examples of recommended actions") or ""
         references = question_data.get("References") or ""
 
-        # Normalize references to a string
-        references = str(references)
+        # Normalize references into a plain string
+        normalized_references = ""
+        try:
+            if isinstance(references, (list, tuple, set)):
+                normalized_references = "; ".join(str(x).strip() for x in references if x)
+            elif isinstance(references, dict):
+                normalized_references = "; ".join(str(v).strip() for v in references.values() if v)
+            else:
+                normalized_references = str(references).strip() if references is not None else ""
+        except Exception:
+            normalized_references = str(references)
 
-        # Build context strings from inputs
+        # Build the context blocks that the model will read
         events_context = self._format_events_for_assessment(event_data or [])
         learning_context = self._format_ops_learning_for_assessment(ops_learning_data or [])
 
-        # Return early if no sources
+        # If there are no usable sources, return the standard fallback message
         if (not event_data or len(event_data) == 0) and (not ops_learning_data or len(ops_learning_data) == 0):
             return "Enough source is not available to answer this question"
 
-        # Pick key facts for the system prompt
+        # Extract headline facts to ground the instructions
         top_facts = self._extract_key_facts(event_data, ops_learning_data)
         
-        # Build system prompt with key facts
+        # Compose the system prompt using those facts
         system_prompt = self._build_system_prompt(critical_question, area, top_facts)
+
+        # Build user content: always include guiding/questions and examples; references are optional
+        prompt_sections = [
+            f"Guiding/Probing Questions:\n{guiding_questions}\n",
+            f"Examples:\n{examples}\n",
+        ]
+        if normalized_references:
+            prompt_sections.append(f"References:\n{normalized_references}\n")
+
+        user_content = (
+            f"Now analyze this question: {critical_question or 'No critical question provided'}\n\n"
+            f"Assessment Area: {area or 'No area specified'}\n\n"
+            f"Events Context:\n{events_context or 'No events context available'}\n\n"
+            f"Operational Learning Context:\n{learning_context or 'No learning context available'}\n\n"
+            + ("\n".join(prompt_sections) + ("\n" if prompt_sections else ""))
+            + "Generate 3-4 bullets using the exact format shown above. Each bullet must include specific facts from the provided sources."
+        )
 
         messages = [
             {"role": "system", "content": system_prompt},
-            # Few-shot example to anchor the format
             {"role": "assistant", "content": 
                 "Legal framework: National Disaster Management Act 2019 establishes Red Cross auxiliary status with government coordination mandate (Reference: MDRBGD025 – Bangladesh Cyclone Response, 15 January 2024)\n"
                 "Operational capacity: Field Report FR-2023-000045 documents 1,200 volunteers deployed across 8 districts with 25,000 beneficiaries reached (Reference: MDRBGD025 – Bangladesh Cyclone Response, 18 January 2024)\n"
                 "Coordination gaps: Ops-learning from MDRBGD024 identifies 5-day delay in government liaison compared to previous response cycle (Reference: MDRBGD024 – Flood Response Review, 10 November 2023)"
             },
-            {
-                "role": "user",
-                "content": (
-                    f"Now analyze this question: {critical_question or 'No critical question provided'}\n\n"
-                    f"Assessment Area: {area or 'No area specified'}\n\n"
-                    f"Events Context:\n{events_context or 'No events context available'}\n\n"
-                    f"Operational Learning Context:\n{learning_context or 'No learning context available'}\n\n"
-                    f"Generate 3-4 bullets using the exact format shown above. Each bullet must include specific facts from the provided sources."
-                ),
-            },
+            {"role": "user", "content": user_content},
         ]
 
         response = self.get_azure_response(messages, cache_prefix="rr_capacity")
 
         if response:
             response = self._clean_markdown_formatting(response)
-            # Ensure response stays within provided sources
+            # Guard against claims not supported by the provided sources
             response = self._validate_response_sources(response, events_context, learning_context)
 
         return response
 
     def _extract_key_facts(self, event_data: List[Dict[str, Any]], ops_learning_data: List[Dict[str, Any]]) -> str:
-        """Return a short list of key facts from sources."""
+        """Pull a short list of headline facts from the inputs to ground the analysis."""
         facts = []
         
-        # Events
+        # From events
         for event in (event_data or [])[:2]:
-            # Skip non-dicts
+            # Skip entries that are not dictionaries
             if not isinstance(event, dict):
                 continue
                 
@@ -2089,7 +2105,7 @@ class RRCapacityTask(BaseAITask):
                     appeal_code = first_appeal.get("code", "")
                     start_date = first_appeal.get("start_date", "")
                 else:
-                    # Handle integer appeal IDs
+                    # Support integer appeal IDs
                     appeal_code = str(first_appeal)
                     start_date = ""
                 
@@ -2106,9 +2122,9 @@ class RRCapacityTask(BaseAITask):
                         fact_parts.append(f"Affected: {self._fmt_num(num_affected)}")
                     facts.append(" | ".join(fact_parts))
         
-        # Ops-learning
+        # From operational learnings
         for learning in (ops_learning_data or [])[:2]:
-            # Skip non-dicts
+            # Skip entries that are not dictionaries
             if not isinstance(learning, dict):
                 continue
                 
@@ -2121,7 +2137,7 @@ class RRCapacityTask(BaseAITask):
             if isinstance(appeal_info, dict):
                 appeal_code = appeal_info.get("code", "")
             else:
-                # Handle integer appeal IDs
+                # Support integer appeal IDs
                 appeal_code = str(appeal_info) if appeal_info else ""
             
             if learning_text and appeal_code:
@@ -2131,28 +2147,13 @@ class RRCapacityTask(BaseAITask):
         return "\n".join(facts) if facts else "No key facts available"
 
     def _validate_response_sources(self, response: str, events_context: str, learning_context: str) -> str:
-        """Ensure the response only uses provided sources."""
+        """Make sure the answer relies only on the sources supplied to it."""
         if not response:
             return response
             
         import re
         
-        # Countries not in sources
-        response_lower = response.lower()
-        
-        # Countries mentioned in sources
-        source_countries = set()
-        if "philippines" in (events_context or "").lower() or "philippines" in (learning_context or "").lower():
-            source_countries.add("philippines")
-        if "djibouti" in (events_context or "").lower() or "djibouti" in (learning_context or "").lower():
-            source_countries.add("djibouti")
-            
-        # Quick guards
-        if "djibouti" in response_lower and "philippines" not in response_lower:
-            if "djibouti" not in source_countries:
-                return "Enough source is not available to answer this question"
-                
-        # Check for appeal codes that don't match sources
+        # Reject appeal codes that are not present in the inputs
         appeal_codes_in_response = re.findall(r'MDR[A-Z]{3}\d+', response)
         appeal_codes_in_sources = re.findall(r'MDR[A-Z]{3}\d+', events_context + learning_context)
         
@@ -2163,11 +2164,8 @@ class RRCapacityTask(BaseAITask):
         return response
 
     def _build_system_prompt(self, critical_question: str, area: str, top_facts: str) -> str:
-        """Build the system prompt using key facts."""
-        question_lower = (critical_question or "").lower() if critical_question else ""
-        area_lower = (area or "").lower() if area else ""
-
-        # Base rules and requirements
+        """Assemble the system prompt around a few key facts from the sources."""
+        # Core rules and constraints
         base_prompt = (
             f"You are an IFRC emergency response specialist conducting rapid response capacity assessment.\n\n"
             f"KEY FACTS FROM SOURCES:\n{top_facts or 'No key facts available'}\n\n"
@@ -2187,13 +2185,13 @@ class RRCapacityTask(BaseAITask):
             f"- Plain text only, no markdown\n\n"
         )
 
-        # Generic focus area
+        # Focus area
         specific_focus = (
             "FOCUS AREA: Capacity Assessment\n"
             "Analyze the specific capacity referenced by the question with concrete, context-grounded insights.\n\n"
         )
 
-        # Final requirements
+        # Additional requirements
         requirements = (
             "REQUIREMENTS:\n"
             "- Tie each bullet to specific field report/appeal IDs with exact figures from sources\n"
@@ -2206,24 +2204,24 @@ class RRCapacityTask(BaseAITask):
         return base_prompt + specific_focus + requirements
 
     def _clean_markdown_formatting(self, text: str) -> str:
-        """Strip markdown emphasis."""
+        """Remove markdown emphasis so the output reads as plain text."""
         if not text:
             return text
         
         import re
         
-        # Fix bold label patterns
+        # Normalize common bold label patterns
         text = re.sub(r"\*\*-\s*([^:]+):\*\*", r"- \1:", text)
         text = re.sub(r"-\s*\*\*([^:]+):\*\*", r"- \1:", text)
         text = re.sub(r"\*\*([^:]+):\*\*", r"\1:", text)
-        # Remove remaining emphasis
+        # Strip any remaining emphasis markers
         text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)
         text = re.sub(r"\*([^*]+)\*", r"\1", text)
         text = re.sub(r"_([^_]+)_", r"\1", text)
         return text.replace("**", "")
 
     def _format_date_for_reference(self, date_string: str) -> str:
-        """Format date string to 'DD Month YYYY' format for consistent references."""
+        """Format dates as 'DD Month YYYY' to keep references consistent."""
         try:
             if "T" in date_string:
                 date_obj = datetime.fromisoformat(date_string.replace("Z", "+00:00"))
@@ -2234,7 +2232,7 @@ class RRCapacityTask(BaseAITask):
             return date_string[:10] if date_string else ""
 
     def _strip_html(self, html: str) -> str:
-        """Convert simple HTML to text."""
+        """Convert simple HTML into plain text."""
         if not html:
             return ""
         
@@ -2257,62 +2255,42 @@ class RRCapacityTask(BaseAITask):
         except Exception:
             return str(v)
 
-    def _coords_of(self, event: Dict[str, Any]) -> Optional[str]:
-        lat = event.get("lat") or event.get("latitude")
-        lon = event.get("lon") or event.get("lng") or event.get("longitude")
-        if lat and lon:
-            return f"{lat}, {lon}"
-        if isinstance(event.get("centroid"), dict):
-            c = event["centroid"]
-            if "lat" in c and "lon" in c:
-                return f"{c['lat']}, {c['lon']}"
-        if isinstance(event.get("bbox"), (list, tuple)) and len(event["bbox"]) == 4:
-            # bbox minLon,minLat,maxLon,maxLat → center
-            minLon, minLat, maxLon, maxLat = event["bbox"]
-            try:
-                clat = (float(minLat) + float(maxLat)) / 2
-                clon = (float(minLon) + float(maxLon)) / 2
-                return f"{clat:.5f}, {clon:.5f}"
-            except Exception:
-                pass
-        return None
-
     def _format_events_for_assessment(self, events: List[Dict[str, Any]]) -> str:
         """
-        Format events for the prompt: summary/description (cleaned), GLIDE, key figures,
-        a few field reports and appeals, and coordinates if available.
+        Format events for the message: include a cleaned summary/description, GLIDE code, key figures,
+        and a small number of field reports and appeals.
         """
         if not events:
             return "No event data available from sources."
 
-        # Allow up to 10 events; keep each concise
+        # Limit to 10 events and keep each entry concise
         MAX_EVENTS = 10
-        MAX_FR_PER_EVENT = 2  # max field reports per event
-        MAX_APPEALS_PER_EVENT = 2  # max appeals per event
-        MAX_EVENT_CHARS = 2000  # max chars per event
+        MAX_FR_PER_EVENT = 2  # maximum field reports per event
+        MAX_APPEALS_PER_EVENT = 2  # maximum appeals per event
+        MAX_EVENT_CHARS = 2000  # maximum characters per event
 
         formatted: List[str] = []
 
         for i, event in enumerate(events[:MAX_EVENTS], 1):
             parts: List[str] = []
 
-            # Header / IDs
+            # Header and IDs
             name = event.get("name", "Unknown")
             dtype_obj = event.get("dtype")
             if isinstance(dtype_obj, dict):
                 dtype = dtype_obj.get("name") or event.get("dtype_name") or "Unknown"
             else:
-                # Handle integer disaster type ID
+                # Support integer disaster type IDs
                 dtype = event.get("dtype_name") or f"Disaster Type ID: {dtype_obj}" if dtype_obj else "Unknown"
             countries = event.get("countries") or []
-            # Handle dicts and ints
+            # Handle list entries that may be dictionaries or integers
             if countries:
                 country_names_list: List[str] = []
                 for c in countries:
                     if isinstance(c, dict):
                         country_names_list.append(c.get("name", "Unknown"))
                     else:
-                        # Show int IDs
+                        # Show integer IDs when names are unavailable
                         country_names_list.append(f"Country ID: {c}")
                 country_names = ", ".join(country_names_list)
             else:
@@ -2323,18 +2301,15 @@ class RRCapacityTask(BaseAITask):
             elif event.get("start_date"):
                 date_str = self._format_date_for_reference(event["start_date"])
             glide = event.get("glide") or ""
-            coords = self._coords_of(event)
 
             header = [f"Event {i}: {name}", f"Type: {dtype}", f"Location: {country_names}"]
             if date_str:
                 header.append(f"Date: {date_str}")
             if glide:
                 header.append(f"GLIDE: {glide}")
-            if coords:
-                header.append(f"Coordinates: {coords}")
             parts.append(" | ".join(header))
 
-            # Severity / Figures
+            # Severity and key figures
             sev = event.get("ifrc_severity_level_display")
             num_aff = event.get("num_affected")
             figbits = []
@@ -2345,7 +2320,7 @@ class RRCapacityTask(BaseAITask):
             if figbits:
                 parts.append("Figures: " + " | ".join(figbits))
 
-            # Narrative (full cleaned)
+            # Narrative (HTML removed)
             full_summary = self._strip_html(event.get("summary", ""))
             full_desc = self._strip_html(event.get("description", ""))
             if full_summary:
@@ -2353,7 +2328,7 @@ class RRCapacityTask(BaseAITask):
             if full_desc and full_desc != full_summary:
                 parts.append("Description:\n" + full_desc)
 
-            # Appeals (capped)
+            # Appeals (limited)
             appeals = event.get("appeals") or []
             if appeals:
                 a_lines = []
@@ -2368,7 +2343,7 @@ class RRCapacityTask(BaseAITask):
                         sd = ap.get("start_date")
                         ed = ap.get("end_date")
                     else:
-                        # Handle integer appeal IDs
+                        # Support integer appeal IDs
                         code = str(ap)
                         atype = ""
                         amt_req = None
@@ -2399,7 +2374,7 @@ class RRCapacityTask(BaseAITask):
                 if a_lines:
                     parts.append("Appeals:\n- " + "\n- ".join(a_lines))
 
-            # Field Reports (capped) with contacts & figures
+            # Field reports including figures
             frs = event.get("field_reports") or []
             if frs:
                 fr_blocks = []
@@ -2410,7 +2385,7 @@ class RRCapacityTask(BaseAITask):
                         fr_date_fmt = self._format_date_for_reference(fr_date) if fr_date else ""
                         if fr_date_fmt:
                             fr_lines.append(f"  Date: {fr_date_fmt}")
-                        # Key numerics
+                        # Key numeric fields
                         keys = [
                             ("num_dead", "Dead"),
                             ("num_injured", "Injured"),
@@ -2441,33 +2416,9 @@ class RRCapacityTask(BaseAITask):
                         if fr_desc and fr_desc != fr_sum:
                             fr_lines.append("  Description: " + fr_desc)
 
-                        # Contacts
-                        contacts = fr.get("contacts") or []
-                        if contacts:
-                            c_lines = []
-                            for c in contacts:
-                                if isinstance(c, dict):
-                                    cname = c.get("name") or ""
-                                    ctitle = c.get("title") or ""
-                                    ctype = c.get("ctype") or ""
-                                    cemail = c.get("email") or ""
-                                    cphone = c.get("phone") or ""
-                                    frag = ", ".join([p for p in [cname, ctitle, ctype] if p])
-                                    if cemail:
-                                        frag += f" | {cemail}"
-                                    if cphone:
-                                        frag += f" | {cphone}"
-                                    if frag:
-                                        c_lines.append(f"    - {frag}")
-                                else:
-                                    # Handle integer contact IDs
-                                    c_lines.append(f"    - Contact ID: {c}")
-                            if c_lines:
-                                fr_lines.append("  Contacts:\n" + "\n".join(c_lines))
-
                         fr_blocks.append("\n".join(fr_lines))
                     else:
-                        # Handle integer field report IDs
+                        # Support integer field report IDs
                         fr_lines = [f"Field Report {idx} (ID: {fr}):"]
                         fr_lines.append("  Note: Field report details not available")
                         fr_blocks.append("\n".join(fr_lines))
@@ -2485,7 +2436,7 @@ class RRCapacityTask(BaseAITask):
             if prov:
                 parts.append("Provenance: " + " | ".join(prov))
 
-            # Join and enforce per-event cap
+            # Join parts and enforce the per-event length cap
             block = "\n".join(parts).strip()
             if len(block) > MAX_EVENT_CHARS:
                 block = block[:MAX_EVENT_CHARS].rstrip() + " … [truncated]"
@@ -2494,14 +2445,14 @@ class RRCapacityTask(BaseAITask):
         return "\n\n".join(formatted)
 
     def _format_ops_learning_for_assessment(self, ops_learning_data: List[Dict[str, Any]]) -> str:
-        """Format operational learning data for capacity assessment context with source labels."""
+        """Format operational learning data for capacity assessment, with clear source labels."""
         if not ops_learning_data:
             return "No operational learning data available from sources."
 
         formatted_learning = []
-        # Allow up to 10 ops-learning items for conciseness
+        # Limit to 10 items for brevity
         for i, learning_item in enumerate(ops_learning_data[:10], 1):
-            # Skip non-dictionary entries to avoid .get() errors
+            # Skip non-dictionaries to avoid attribute errors
             if not isinstance(learning_item, dict):
                 continue
                 
@@ -2530,7 +2481,7 @@ class RRCapacityTask(BaseAITask):
                     formatted_date = self._format_date_for_reference(appeal_info["start_date"])
                     learning_info.append(f"Date: {formatted_date}")
             else:
-                # Handle integer appeal IDs
+                # Support integer appeal IDs
                 appeal_code = str(appeal_info) if appeal_info else ""
                 if appeal_code:
                     learning_info.append(f"Appeal Code: {appeal_code}")
@@ -2555,7 +2506,7 @@ class PreviousCrisesTask(BaseAITask):
         self.ifrc_client = IFRCAPIClient()
     
     async def process_previous_crises_insights(self, country_id: int, disaster_type_id: int) -> List[Dict[str, Any]]:
-        """Process previous crises insights and generate AI summaries"""
+        """Process previous crises insights and generate automated summaries"""
         
         async with self.ifrc_client as client:
             # STEP 1: primary (country AND disaster) 
@@ -2616,7 +2567,7 @@ class PreviousCrisesTask(BaseAITask):
         }
 
     def generate_ai_summary(self, structured_data):
-        """Generate AI summary using Azure OpenAI"""
+        """Generate summary using the configured model backend"""
         import json
         
         # 1) Build flat list of learnings
@@ -2665,7 +2616,7 @@ class PreviousCrisesTask(BaseAITask):
             )
         }
 
-        # 4) Call OpenAI using enhanced client
+        # 4) Call the configured model backend
         raw = self.get_azure_response([system_message, user_message], cache_prefix="previous_crises")
 
         if not raw:
@@ -2677,7 +2628,7 @@ class PreviousCrisesTask(BaseAITask):
                 clean = clean.strip("```").strip()
             parsed = json.loads(clean)
         except Exception as e:
-            logger.error(f"AI parsing error: {e}")
+            logger.error(f"Parsing error: {e}")
             return [{
                 "title": "ParsingError",
                 "insight": raw.strip(),

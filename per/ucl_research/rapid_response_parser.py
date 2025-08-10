@@ -1,9 +1,4 @@
-"""
-Parser for Rapid Response capacity questions.
-
-Loads questions from rr_parsed_excel.json, fills missing fields using
-IFRC data and AI responses, and exports an Excel workbook with a Sources sheet.
-"""
+"""Parser for Rapid Response capacity questions and Excel export."""
 
 import json
 import os
@@ -23,7 +18,7 @@ from per.ucl_research.ops_learning_summary4 import RRCapacityTask, BaseAITask
 
 
 class RapidResponseCapacityParser:
-    """Coordinates data input, AI responses, and Excel export."""
+    """Coordinates data input, generated responses, and Excel export."""
     
     def __init__(self):
         self.ifrc_client = IFRCAPIClient()
@@ -37,17 +32,7 @@ class RapidResponseCapacityParser:
         ops_learning_data: List[Dict[str, Any]],
         events_data: List[Dict[str, Any]]
     ) -> str:
-        """
-        Process RR capacity questions and return blob URL for Excel file.
-        
-        Args:
-            country_id: Country ID for filtering
-            disaster_type_id: Disaster type ID for filtering
-            cache_key: Cache key for storing result
-            
-        Returns:
-            Blob URL for the generated Excel file
-        """
+        """Process RR capacity questions and return blob URL for the Excel file."""
         import asyncio
         
         # Load questions data
@@ -82,7 +67,7 @@ class RapidResponseCapacityParser:
     
     @classmethod
     def _load_questions_data(cls) -> List[Dict[str, Any]]:
-        """Load the parsed questions data from rr_parsed_excel.json"""
+        """Load the parsed questions data from rr_parsed_excel.json."""
         # Get the directory of this file and join with the JSON file name
         current_dir = os.path.dirname(os.path.abspath(__file__))
         json_path = os.path.join(current_dir, 'rr_parsed_excel.json')
@@ -96,7 +81,7 @@ class RapidResponseCapacityParser:
         events_data: List[Dict[str, Any]], 
         ops_learning_data: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
-        """Process each question and fill missing fields using AI service."""
+        """Process each question and fill missing fields using the response service."""
         processed_questions = []
         
         # Handle None values
@@ -159,7 +144,7 @@ class RapidResponseCapacityParser:
         events_data: Optional[List[Dict[str, Any]]] = None, 
         ops_learning_data: Optional[List[Dict[str, Any]]] = None
     ) -> Workbook:
-        """Create Excel file with the same structure as the original, but with filled data and sources."""
+        """Create the Excel file with filled data and sources."""
         
         wb = Workbook()
         ws = wb.active
@@ -379,7 +364,7 @@ class RapidResponseCapacityParser:
         return wb
     
     def _get_area_color(self, area: str) -> str:
-        """Get the appropriate pastel color for each area."""
+        """Get a pastel color for each area."""
         if not area:
             return "FFFFFF"
         
