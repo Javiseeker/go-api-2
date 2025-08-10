@@ -1997,15 +1997,12 @@ class DrefSummaryTask(BaseAITask):
 
 
 class RRCapacityTask(BaseAITask):
-    """
-    Rapid Response Capacity Assessment task using enhanced Azure OpenAI client.
-    Handles RR-specific prompt logic and formatting for capacity question processing.
-    """
+    """Handles RR capacity questions: builds prompts, calls the model, and formats output."""
 
     def process_capacity_question(
         self, question_data: Dict[str, Any], event_data: List[Dict[str, Any]], ops_learning_data: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Optional[str]]:
-        """Process a single RR capacity question and generate only response notes."""
+        """Return notes for a single RR capacity question."""
         if ops_learning_data is None:
             ops_learning_data = []
 
@@ -2018,7 +2015,7 @@ class RRCapacityTask(BaseAITask):
     def generate_response_notes(
         self, question_data: Dict[str, Any], event_data: List[Dict[str, Any]], ops_learning_data: Optional[List[Dict[str, Any]]] = None
     ) -> Optional[str]:
-        """Generate brief notes on response capacity based on question and appeal-driven event data."""
+        """Generate notes using event and ops-learning data."""
         if ops_learning_data is None:
             ops_learning_data = []
 
@@ -2028,26 +2025,21 @@ class RRCapacityTask(BaseAITask):
         examples = question_data.get("Examples of recommended actions") or ""
         references = question_data.get("References") or ""
 
-        # Improve references handling - check for different formats
-        if isinstance(references, list):
-            references = "; ".join(str(ref) for ref in references if ref)
-        elif references:
-            references = str(references)
-        else:
-            references = "No specific references provided"
+        # Normalize references to a string
+        references = str(references)
 
-        # Build rich context from events and ops-learning
+        # Build context strings from inputs
         events_context = self._format_events_for_assessment(event_data or [])
         learning_context = self._format_ops_learning_for_assessment(ops_learning_data or [])
 
-        # Check if we have real data - if not, return early
+        # Return early if no sources
         if (not event_data or len(event_data) == 0) and (not ops_learning_data or len(ops_learning_data) == 0):
             return "Enough source is not available to answer this question"
 
-        # Extract top facts for front-loading in system prompt
+        # Pick key facts for the system prompt
         top_facts = self._extract_key_facts(event_data, ops_learning_data)
         
-        # Build consolidated system prompt with key facts and question-specific guidance
+        # Build system prompt with key facts
         system_prompt = self._build_system_prompt(critical_question, area, top_facts)
 
         messages = [
@@ -2074,18 +2066,18 @@ class RRCapacityTask(BaseAITask):
 
         if response:
             response = self._clean_markdown_formatting(response)
-            # Validate that response only uses information from provided sources
+            # Ensure response stays within provided sources
             response = self._validate_response_sources(response, events_context, learning_context)
 
         return response
 
     def _extract_key_facts(self, event_data: List[Dict[str, Any]], ops_learning_data: List[Dict[str, Any]]) -> str:
-        """Extract 2-3 most salient facts from events and ops-learning for front-loading."""
+        """Return a short list of key facts from sources."""
         facts = []
         
-        # Extract top event facts
-        for event in (event_data or [])[:2]:  # Top 2 events
-            # Skip non-dictionary entries to avoid .get() errors
+        # Events
+        for event in (event_data or [])[:2]:
+            # Skip non-dicts
             if not isinstance(event, dict):
                 continue
                 
@@ -2114,9 +2106,9 @@ class RRCapacityTask(BaseAITask):
                         fact_parts.append(f"Affected: {self._fmt_num(num_affected)}")
                     facts.append(" | ".join(fact_parts))
         
-        # Extract top ops-learning facts
-        for learning in (ops_learning_data or [])[:2]:  # Top 2 learning items
-            # Skip non-dictionary entries to avoid .get() errors
+        # Ops-learning
+        for learning in (ops_learning_data or [])[:2]:
+            # Skip non-dicts
             if not isinstance(learning, dict):
                 continue
                 
@@ -2139,23 +2131,23 @@ class RRCapacityTask(BaseAITask):
         return "\n".join(facts) if facts else "No key facts available"
 
     def _validate_response_sources(self, response: str, events_context: str, learning_context: str) -> str:
-        """Validate that response only uses information from provided sources."""
+        """Ensure the response only uses provided sources."""
         if not response:
             return response
             
         import re
         
-        # Check if response mentions countries/places not in sources
+        # Countries not in sources
         response_lower = response.lower()
         
-        # Extract country names from sources
+        # Countries mentioned in sources
         source_countries = set()
         if "philippines" in (events_context or "").lower() or "philippines" in (learning_context or "").lower():
             source_countries.add("philippines")
         if "djibouti" in (events_context or "").lower() or "djibouti" in (learning_context or "").lower():
             source_countries.add("djibouti")
             
-        # Check for problematic patterns
+        # Quick guards
         if "djibouti" in response_lower and "philippines" not in response_lower:
             if "djibouti" not in source_countries:
                 return "Enough source is not available to answer this question"
@@ -2171,7 +2163,7 @@ class RRCapacityTask(BaseAITask):
         return response
 
     def _build_system_prompt(self, critical_question: str, area: str, top_facts: str) -> str:
-        """Build a comprehensive system prompt with key facts and question-specific guidance."""
+        """Build the system prompt using key facts."""
         question_lower = (critical_question or "").lower() if critical_question else ""
         area_lower = (area or "").lower() if area else ""
 
@@ -2214,13 +2206,13 @@ class RRCapacityTask(BaseAITask):
         return base_prompt + specific_focus + requirements
 
     def _clean_markdown_formatting(self, text: str) -> str:
-        """Remove common markdown artifacts."""
+        """Strip markdown emphasis."""
         if not text:
             return text
         
         import re
         
-        # Handle bolded label patterns
+        # Fix bold label patterns
         text = re.sub(r"\*\*-\s*([^:]+):\*\*", r"- \1:", text)
         text = re.sub(r"-\s*\*\*([^:]+):\*\*", r"- \1:", text)
         text = re.sub(r"\*\*([^:]+):\*\*", r"\1:", text)
@@ -2242,7 +2234,7 @@ class RRCapacityTask(BaseAITask):
             return date_string[:10] if date_string else ""
 
     def _strip_html(self, html: str) -> str:
-        """Rudimentary HTML → text cleaner for summaries/descriptions from GO."""
+        """Convert simple HTML to text."""
         if not html:
             return ""
         
@@ -2275,7 +2267,7 @@ class RRCapacityTask(BaseAITask):
             if "lat" in c and "lon" in c:
                 return f"{c['lat']}, {c['lon']}"
         if isinstance(event.get("bbox"), (list, tuple)) and len(event["bbox"]) == 4:
-            # minLon, minLat, maxLon, maxLat → show center
+            # bbox minLon,minLat,maxLon,maxLat → center
             minLon, minLat, maxLon, maxLat = event["bbox"]
             try:
                 clat = (float(minLat) + float(maxLat)) / 2
@@ -2287,18 +2279,17 @@ class RRCapacityTask(BaseAITask):
 
     def _format_events_for_assessment(self, events: List[Dict[str, Any]]) -> str:
         """
-        Rich event context for the assessment.
-        Includes: full summary/description (HTML stripped), GLIDE, contacts, key figures,
-        all field reports (capped), all appeals (capped), coordinates if available.
+        Format events for the prompt: summary/description (cleaned), GLIDE, key figures,
+        a few field reports and appeals, and coordinates if available.
         """
         if not events:
             return "No event data available from sources."
 
-        # === UPDATED: allow up to 10 events with concise formatting ===
+        # Allow up to 10 events; keep each concise
         MAX_EVENTS = 10
-        MAX_FR_PER_EVENT = 2  # Reduced for conciseness
-        MAX_APPEALS_PER_EVENT = 2  # Reduced for conciseness
-        MAX_EVENT_CHARS = 2000  # Reduced for better token efficiency
+        MAX_FR_PER_EVENT = 2  # max field reports per event
+        MAX_APPEALS_PER_EVENT = 2  # max appeals per event
+        MAX_EVENT_CHARS = 2000  # max chars per event
 
         formatted: List[str] = []
 
@@ -2314,14 +2305,14 @@ class RRCapacityTask(BaseAITask):
                 # Handle integer disaster type ID
                 dtype = event.get("dtype_name") or f"Disaster Type ID: {dtype_obj}" if dtype_obj else "Unknown"
             countries = event.get("countries") or []
-            # Updated logic: handle dicts and ints
+            # Handle dicts and ints
             if countries:
                 country_names_list: List[str] = []
                 for c in countries:
                     if isinstance(c, dict):
                         country_names_list.append(c.get("name", "Unknown"))
                     else:
-                        # For integer IDs, represent them explicitly
+                        # Show int IDs
                         country_names_list.append(f"Country ID: {c}")
                 country_names = ", ".join(country_names_list)
             else:
@@ -2508,7 +2499,7 @@ class RRCapacityTask(BaseAITask):
             return "No operational learning data available from sources."
 
         formatted_learning = []
-        # === UPDATED: allow up to 10 ops-learning items for conciseness ===
+        # Allow up to 10 ops-learning items for conciseness
         for i, learning_item in enumerate(ops_learning_data[:10], 1):
             # Skip non-dictionary entries to avoid .get() errors
             if not isinstance(learning_item, dict):
