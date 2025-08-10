@@ -1,15 +1,8 @@
 """
-Rapid Response Capacity Questions Parser
-=======================================
+Parser for Rapid Response capacity questions.
 
-Extracted logic for processing RR capacity questions and generating filled Excel output.
-Moved from per.rr_endpoint.RRCapacityQuestionsView to maintain separation of concerns.
-
-Features:
-- Loads and processes RR capacity questions from JSON
-- Fetches operational learning data using IFRC API
-- Generates Excel output with proper formatting and sources
-- Uses IFRCAPIClient for all HTTP requests
+Loads questions from rr_parsed_excel.json, fills missing fields using
+IFRC data and AI responses, and exports an Excel workbook with a Sources sheet.
 """
 
 import json
@@ -30,9 +23,7 @@ from per.ucl_research.ops_learning_summary4 import RRCapacityTask, BaseAITask
 
 
 class RapidResponseCapacityParser:
-    """
-    Parser for RR capacity questions with operational learning integration.
-    """
+    """Coordinates data input, AI responses, and Excel export."""
     
     def __init__(self):
         self.ifrc_client = IFRCAPIClient()
@@ -62,7 +53,7 @@ class RapidResponseCapacityParser:
         # Load questions data
         questions_data = self._load_questions_data()
         
-        # Data is now passed from the view
+        # Data is provided by the caller
         
         # Process questions and fill missing fields
         processed_questions = self._process_questions(
@@ -189,11 +180,11 @@ class RapidResponseCapacityParser:
             "References"
         ]
         
-        # Style the headers
+        # Header styles
         header_font = Font(bold=True, size=11, color="000000")
         header_fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
         
-        # Add main title row
+        # Main title row
         ws.merge_cells('A1:H1')
         title_cell = ws['A1']
         title_cell.value = "Rapid Response Capacity Check"
@@ -202,7 +193,7 @@ class RapidResponseCapacityParser:
         title_cell.alignment = Alignment(horizontal="center")
         ws.row_dimensions[1].height = 34
         
-        # Add Country and Date identifiers in row 2
+        # Country and date row
         country_cell = ws['A2']
         country_cell.value = "Country:"
         country_cell.font = Font(bold=True, size=20, color="000000")
@@ -225,7 +216,7 @@ class RapidResponseCapacityParser:
         date_cell.font = Font(bold=True, size=20, color="000000")
         date_cell.alignment = Alignment(horizontal="left")
         
-        # Add current date
+        # Current date
         current_date = datetime.now().strftime("%d %B %Y")
         date_value_cell = ws['E2']
         date_value_cell.value = current_date
@@ -233,7 +224,7 @@ class RapidResponseCapacityParser:
         date_value_cell.alignment = Alignment(horizontal="left")
         ws.row_dimensions[2].height = 26
         
-        # Add headers in row 3
+        # Headers row
         for col, header in enumerate(headers, 1):
             cell = ws.cell(row=3, column=col, value=header)
             cell.font = header_font
@@ -322,7 +313,7 @@ class RapidResponseCapacityParser:
                 cell.alignment = Alignment(wrap_text=True, vertical="top")
                 cell.font = Font(size=11, color="000000")
                 
-                # Clean markdown formatting
+                # Remove markdown emphasis
                 if value and isinstance(value, str) and "**" in value:
                     import re
                     
@@ -382,7 +373,7 @@ class RapidResponseCapacityParser:
             if col_idx < len(column_letters):
                 ws.column_dimensions[column_letters[col_idx]].width = width
         
-        # Create Sources sheet
+        # Add Sources sheet
         self._add_sources_sheet(wb, events_data, ops_learning_data)
         
         return wb
@@ -413,7 +404,7 @@ class RapidResponseCapacityParser:
         """Add a Sources sheet with source information."""
         sources_ws = workbook.create_sheet("Sources Used")
         
-        # Style definitions
+        # Styles
         header_font = Font(bold=True, size=12, color="FFFFFF")
         header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
         section_font = Font(bold=True, size=11, color="203764")
@@ -516,6 +507,6 @@ class RapidResponseCapacityParser:
                 sources_ws[f'E{row}'] = source_context
                 row += 1
         
-        # Auto-adjust column widths
+        # Column widths
         for col in range(1, 6):
             sources_ws.column_dimensions[chr(64 + col)].width = 25
