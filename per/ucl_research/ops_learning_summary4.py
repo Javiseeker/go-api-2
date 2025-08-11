@@ -2076,6 +2076,11 @@ class RRCapacityTask(BaseAITask):
 
         messages = [
             {"role": "system", "content": system_prompt},
+            {"role": "assistant", "content": (
+                "Legal framework: National Disaster Management Act 2019 establishes Red Cross auxiliary status with government coordination mandate (Reference: MDRBGD025 – Bangladesh Cyclone Response, 15 January 2024)\n"
+                "Operational capacity: Field Report FR-2023-000045 documents 1,200 volunteers deployed across 8 districts with 25,000 beneficiaries reached (Reference: MDRBGD025 – Bangladesh Cyclone Response, 18 January 2024)\n"
+                "Coordination gaps: Ops-learning from MDRBGD024 identifies 5-day delay in government liaison compared to previous response cycle (Reference: MDRBGD024 – Flood Response Review, 10 November 2023)"
+            )},
             {"role": "user", "content": user_content},
         ]
 
