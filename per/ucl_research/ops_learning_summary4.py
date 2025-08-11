@@ -1427,7 +1427,7 @@ class DrefSummaryTask(BaseAITask):
         "- Exactly 3 lines, one complete sentence each\n"
         "- Include specific numbers and details\n"
         "- Focus on operation_objective and response_strategy fields\n"
-        "- When mentioning people affected, include households affected in parentheses if available\n\n"
+        "- When mentioning people affected, include households affected in parentheses if available. If not, ignore it.\n\n"
         "Example:\n"
         "The operation aims to provide emergency assistance to 5,000 flood-affected people (1,200) in Bangladesh through cash transfers and relief items.\n"
         "The strategy prioritizes rapid response through existing National Society networks and coordination with local authorities to ensure efficient delivery.\n"
