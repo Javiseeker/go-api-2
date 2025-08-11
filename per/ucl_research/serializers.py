@@ -21,6 +21,13 @@ class PerDrefLLMSummaryFutureActionSerializer(serializers.Serializer):
     budget = serializers.DecimalField(max_digits=15, decimal_places=2, required=False, allow_null=True)
     people_targeted_total = serializers.IntegerField(required=False, allow_null=True)
     intervention_summary = serializers.CharField(required=False, allow_blank=True)
+    
+    def to_representation(self, instance):
+        """Override to exclude internal fields from serialization"""
+        data = super().to_representation(instance)
+        # Remove any internal fields that shouldn't be in the API response
+        data.pop('_description', None)
+        return data
 
 
 class PerDrefLLMSummarySectorSerializer(serializers.Serializer):
