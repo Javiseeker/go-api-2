@@ -184,7 +184,7 @@ class OpsLearningSummaryTask(BaseAITask):
 
     primary_prompt = (
         "\nBelow is a list of event summaries and their associated operational learnings. "
-        "Your task is to synthesize across all these data points and produce **4 clear, concise, evidence‑based highlights** "
+        "Your task is to synthesize across all these data points and produce **up to 6 clear, concise, evidence‑based highlights** "
         "that capture the key similarities, patterns or lessons learned. For each highlight include:\n\n"
         " 1. **Title**: A very short bold summary (20–30 characters).\n"
         " 2. **Content**: One or two sentences explaining the highlight, referencing the type of event or country (e.g. 'Based on droughts in Ethiopia, 2023').\n"
