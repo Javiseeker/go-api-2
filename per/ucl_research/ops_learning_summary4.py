@@ -2030,19 +2030,7 @@ class RRCapacityTask(BaseAITask):
         critical_question = question_data.get("Critical Questions") or ""
         guiding_questions = question_data.get("Guiding/probing questions") or ""
         examples = question_data.get("Examples of recommended actions") or ""
-        references = question_data.get("References") or ""
-
-        # Normalize references into a plain string
-        normalized_references = ""
-        try:
-            if isinstance(references, (list, tuple, set)):
-                normalized_references = "; ".join(str(x).strip() for x in references if x)
-            elif isinstance(references, dict):
-                normalized_references = "; ".join(str(v).strip() for v in references.values() if v)
-            else:
-                normalized_references = str(references).strip() if references is not None else ""
-        except Exception:
-            normalized_references = str(references)
+        # References are intentionally excluded from the RR prompt
 
         # Build the context blocks that the model will read
         events_context = self._format_events_for_assessment(event_data or [])
@@ -2063,8 +2051,6 @@ class RRCapacityTask(BaseAITask):
             f"Guiding/Probing Questions:\n{guiding_questions}\n",
             f"Examples:\n{examples}\n",
         ]
-        if normalized_references:
-            prompt_sections.append(f"References:\n{normalized_references}\n")
 
         user_content = (
             f"Now analyze this question: {critical_question or 'No critical question provided'}\n\n"
