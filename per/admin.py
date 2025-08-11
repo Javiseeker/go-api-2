@@ -11,7 +11,6 @@ import per.models as models
 from api.models import Appeal
 from lang.admin import TranslationAdmin, TranslationInlineModelAdmin
 from per.admin_classes import GotoNextModelAdmin, RegionRestrictedAdmin
-from per.task import generate_summary
 
 
 class FormDataInline(admin.TabularInline, TranslationInlineModelAdmin):

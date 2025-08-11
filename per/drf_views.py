@@ -58,7 +58,6 @@ from per.permissions import (
     PerGeneralPermission,
     PerPermission,
 )
-from per.task import generate_summary
 from per.utils import filter_per_queryset_by_user_access
 from .admin_classes import RegionRestrictedAdmin
 from .custom_renderers import NarrowCSVRenderer

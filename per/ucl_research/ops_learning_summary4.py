@@ -1642,14 +1642,19 @@ class DrefSummaryTask(BaseAITask):
                         
                         sector_summary["future_actions"] = future_actions
                     
-                    # Only include sectors that have meaningful content
+                    # Only include sectors that have BOTH needs and interventions
                     has_needs_summary = bool(sector_summary["needs_summary"].strip())
                     has_future_actions = bool(sector_summary["future_actions"])
                     
-                    if has_needs_summary or has_future_actions:
+                    if has_needs_summary and has_future_actions:
                         sectors.append(sector_summary)
                     else:
-                        logger.info(f"Skipping empty sector '{sector_title}' - no meaningful content")
+                        if not has_needs_summary and has_future_actions:
+                            logger.info(f"Skipping sector '{sector_title}' - has interventions but no matching needs")
+                        elif has_needs_summary and not has_future_actions:
+                            logger.info(f"Skipping sector '{sector_title}' - has needs but no interventions")
+                        else:
+                            logger.info(f"Skipping empty sector '{sector_title}' - no meaningful content")
                     
                 except Exception as e:
                     logger.error(f"Error processing sector {sector_title}: {e}")
