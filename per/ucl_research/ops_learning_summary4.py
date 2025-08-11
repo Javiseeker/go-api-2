@@ -2162,6 +2162,7 @@ class RRCapacityTask(BaseAITask):
             f"You are an IFRC emergency response specialist conducting rapid response capacity assessment.\n\n"
             f"KEY FACTS FROM SOURCES:\n{top_facts or 'No key facts available'}\n\n"
             f"CRITICAL INSTRUCTION: You are ONLY allowed to use information that is EXPLICITLY provided in the sources above.\n"
+            f"DO NOT attempt to infer, stretch, reframe, or generalise learnings beyond what is clearly supported by the sources and directly addresses the question.\n"
             f"You are FORBIDDEN from using any information from your training data, general knowledge, or any other source.\n"
             f"If the sources do not contain enough information to answer the question, you MUST respond with:\n"
             f"'Enough source is not available to answer this question'\n\n"

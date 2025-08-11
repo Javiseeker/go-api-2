@@ -321,7 +321,7 @@ class RapidResponseCapacityQuestionsView(BaseUCLView):
         client: IFRCAPIClient, 
         country_id: int, 
         disaster_type_id: int, 
-        target_count: int = 15
+        target_count: int = 10
     ) -> List[Dict[str, Any]]:
         """
         Fetch ops-learning data using two-stage approach.
