@@ -62,8 +62,6 @@ from local_units.views import DelegationOfficeDetailAPIView, DelegationOfficeLis
 from notifications import drf_views as notification_views
 from per import drf_views as per_views
 from per.views import LearningTypes
-from per.drf_views import IFRCEventListView
-from per.rr_endpoint import RRCapacityQuestionsView
 from registrations import drf_views as registration_views
 from registrations.drf_views import RegistrationView
 from registrations.views import UserExternalTokenViewset, ValidateUser, VerifyEmail
@@ -189,7 +187,6 @@ admin.site.site_header = "IFRC Go administration"
 admin.site.site_title = "IFRC Go admin"
 
 urlpatterns = [
-    url(r"^api/v2/ifrc-events/", IFRCEventListView.as_view()), # REMOVE
     # url(r"^api/v1/es_search/", EsPageSearch.as_view()),
     url(r"^api/v1/search/", HayStackSearch.as_view()),
     url(r"^api/v1/es_health/", EsPageHealth.as_view()),
@@ -237,9 +234,6 @@ urlpatterns = [
     url(r"^api/v2/event/(?P<slug>[-\w]+)", api_views.EventViewset.as_view({"get": "retrieve"}, lookup_field="slug")),
     url(r"^api/v2/delegation-office/(?P<pk>\d+)", DelegationOfficeDetailAPIView.as_view()),
     url(r"^api/v2/delegation-office/", DelegationOfficeListAPIView.as_view()),
-    url(r"^api/v2/per-dref-summary/", per_views.PerDrefLLMSummaryView.as_view()),
-    url(r"^api/v2/rr-capacity-questions/", RRCapacityQuestionsView.as_view()),
-    url(r"^api/v2/per-dref-situational-overview/", per_views.PerDrefSituationalOverviewView.as_view()),
     url(r"^tinymce/", include("tinymce.urls")),
     url(r"^$", RedirectView.as_view(url="/admin")),
     # url(r'^', admin.site.urls),
