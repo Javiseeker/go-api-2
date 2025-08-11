@@ -184,7 +184,7 @@ class OpsLearningSummaryTask(BaseAITask):
 
     primary_prompt = (
         "\nBelow is a list of event summaries and their associated operational learnings. "
-        "Your task is to synthesize across all these data points and produce **3 to 6 clear, concise, evidence‑based highlights** "
+        "Your task is to synthesize across all these data points and produce **4 clear, concise, evidence‑based highlights** "
         "that capture the key similarities, patterns or lessons learned. For each highlight include:\n\n"
         " 1. **Title**: A very short bold summary (20–30 characters).\n"
         " 2. **Content**: One or two sentences explaining the highlight, referencing the type of event or country (e.g. 'Based on droughts in Ethiopia, 2023').\n"
@@ -2638,18 +2638,33 @@ class PreviousCrisesTask(BaseAITask):
         system_message = {
             "role": "system",
             "content": (
-                "You MUST return a JSON array of up to 6 objects, each merging between two and three distinct learnings into a single, detailed insight."
-                "You MUST include the source of learning you are referencing within the insight "
-                "Prioritise showing insights that are based on learnings that have a matching disaster type. "
-                "The tone should be to help with a current similar crisis. "
-                "Include for each insight a key called `source_note` and a `metadata.operational_learning_source` array of {id,code,name}.  "
+                "You MUST return a JSON array of high-quality insights, each merging between two and three distinct learnings into a single, "
+                "cohesive narrative that fully integrates the sources into one detailed point. "
+                "Aim to MERGE learnings wherever possible — do not create single-learning insights unless no valid merge exists. "
+                "The quantity is determined solely by how many valid, unique merges can be made without reusing Learning IDs — never force an insight just to reach the target. "
+                "Quality is the top priority — fewer insights are fine if it avoids repetition or speculation. "
+                "Each insight MUST be based only on the provided learning content — NO invention or unsupported speculation. "
+                "All claims must be directly traceable to the source learnings. "
+                "If two learnings are unrelated or lack a clearly matching theme, do NOT merge them. "
+                "Avoid repeating the same core point across multiple insights — each must give a unique perspective. "
+                "Each insight must reference specific facts, examples, or operational details from the source learnings AND clearly name the country and disaster type. "
+                "You MUST include the source of each learning you are referencing in `metadata.operational_learning_source`. "
+                "Prioritise insights that have a matching disaster type between their learnings. "
+                "The tone should be practical and aimed at helping a current similar crisis. "
+                "Produce no more than 6 insights in total "
+                "Include for each insight a key called `source_note` and a `metadata.operational_learning_source` array of {id,code,name}. "
+                "UNIQUENESS RULES: "
+                "- Use each Learning ID only once across ALL insights. "
+                "- Never repeat a Learning ID in more than one insight. "
+                "- Within an insight, list each Learning ID only once. "
+                "- If you cannot create more insights without reusing IDs, stop and output only the valid ones. "
                 "Example of correct output:\n\n"
                 "[\n"
                 "  {\n"
                 "    \"title\": \"Customizing Data Tools\",\n"
                 "    \"insight\": \"...\",\n"
                 "    \"source_note\": \"…\",\n"
-                "    \"metadata\": { … }\n"
+                "    \"metadata\": { \"operational_learning_source\": [ {\"id\": 123, \"code\": \"MDRXX001\", \"name\": \"Example\"} ] }\n"
                 "  }\n"
                 "]\n\n"
                 "Return ONLY the JSON array (no markdown)."
@@ -2666,11 +2681,16 @@ class PreviousCrisesTask(BaseAITask):
             "role": "user",
             "content": (
                 "Here are the learnings:\n" + learnings_block +
-                "\n\nPlease synthesize up to 6 actionable insights by combining any learnings that share a theme. "
-                "Explain how each insight builds on the sources and appeal codes, and enrich them with the event details (description, disaster type, country).  "
-                "You MUST include the source of learning you are referencing within the insight "
-                "In `metadata.operational_learning_source` list every source you used (with its `id`, `code`, and `name`).  "
-                "Make each insight no less than 4 sentences, include the country name, and return only valid JSON."
+                "\n\nPlease synthesize INSIGHTS by combining two or three learnings that share a clear and meaningful theme. "
+                "Each insight should weave the learnings together into one unified narrative — not just list them — showing how they connect and complement each other. "
+                "All claims must be grounded entirely in the provided learning text, and you must clearly include the country and disaster type context. "
+                "Do NOT invent or speculate. "
+                "Use each Learning ID exactly once across ALL insights — if no valid pairings remain, stop. "
+                "Produce no more than 6 insights in total, aiming for 4 to 5 as the ideal number for quality and coverage. "
+                "Single-learning insights should only be used when no valid merge exists. "
+                "Each insight must be at least 4 sentences long, rich with detail, and reference concrete operational challenges, actions, and outcomes from the sources. "
+                "Include the sources used in `metadata.operational_learning_source` with their `id`, `code`, and `name`. "
+                "Return ONLY valid JSON — no markdown, no extra text."
             )
         }
 

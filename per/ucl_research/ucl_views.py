@@ -146,19 +146,25 @@ class PreviousCrisesInsightsView(BaseUCLView):
         """Process previous crises insights using dedicated task class"""
         
         async with IFRCAPIClient() as client:
-            # STEP 1: primary (country AND disaster) 
-            primary = await client.get_ops_learning(country_id, disaster_type_id)
-
-            # STEP 2: fallback (country only)
+            primary = await client.get_ops_learning(country_id, disaster_type_id, max_results=20)
             if not primary:
-                secondary = await client.get_ops_learning(country_id, None)
+                secondary = await client.get_ops_learning(country_id, None, max_results=20)
             else:
-                all_country = await client.get_ops_learning(country_id, None)
+                all_country = await client.get_ops_learning(country_id, None, max_results=20)
                 primary_ids = {p['id'] for p in primary}
                 secondary = [l for l in all_country if l['id'] not in primary_ids]
 
-            # STEP 3: Combine both sets of learning and pad out to up to 6 items
-            combined_learning = (primary + secondary)[:6]
+            merged = primary + secondary
+            seen_ids = set()
+            deduped = []
+            for l in merged:
+                lid = l.get('id')
+                if lid in seen_ids:
+                    continue
+                seen_ids.add(lid)
+                deduped.append(l)
+
+            combined_learning = deduped[:20]
 
             if not combined_learning:
                 return Response({
@@ -178,16 +184,12 @@ class PreviousCrisesInsightsView(BaseUCLView):
                 ev_id = pl.get("event_id")
                 event = await client.get_event_detail(ev_id) if ev_id else {}
 
-                # Handle case where event might be None
                 if not event:
                     event = {}
-
-                # Safely extract countries list
                 countries = event.get("countries", [])
                 if not isinstance(countries, list):
                     countries = []
 
-                # Safely extract dtype name
                 dtype_obj = event.get("dtype")
                 if isinstance(dtype_obj, dict):
                     dtype_name = dtype_obj.get("name")
@@ -203,7 +205,6 @@ class PreviousCrisesInsightsView(BaseUCLView):
                     "description": event.get("description") or event.get("summary") or ""
                 }
 
-            # STEP 5: Call AI summary generator
             ai_summary = self.previous_crises_task.generate_ai_summary([{"related_ops_learning": processed_learnings}])
             
         if not ai_summary:
@@ -334,7 +335,7 @@ class RapidResponseCapacityQuestionsView(BaseUCLView):
         primary_batch = await client.get_ops_learning(
             country_id=country_id,
             disaster_type_id=disaster_type_id,
-            max_results=10
+            max_results=20
         )
         
         primary_labeled = [
