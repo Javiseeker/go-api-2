@@ -2026,22 +2026,35 @@ class RRCapacityTask(BaseAITask):
         if ops_learning_data is None:
             ops_learning_data = []
 
+        try:
+            all_sources: List[Dict[str, Any]] = list(event_data or []) + list(ops_learning_data or [])
+            relevant_sources: List[Dict[str, Any]] = self._filter_and_rank_sources(question_data, all_sources)
+            # Separate back into events and learnings
+            relevant_events: List[Dict[str, Any]] = [s for s in relevant_sources if isinstance(s, dict) and s.get("name")]
+            relevant_learnings: List[Dict[str, Any]] = [
+                s for s in relevant_sources if isinstance(s, dict) and (
+                    s.get("learning_validated_en") or s.get("learning_validated") or s.get("learning_en")
+                )
+            ]
+            if not relevant_sources:
+                return "Enough source is not available to answer this question"
+        except Exception:
+            # If any error during filtering, gracefully fall back to original inputs
+            relevant_events = event_data or []
+            relevant_learnings = ops_learning_data or []
+
         area = question_data.get("Area") or ""
         critical_question = question_data.get("Critical Questions") or ""
         guiding_questions = question_data.get("Guiding/probing questions") or ""
         examples = question_data.get("Examples of recommended actions") or ""
-        # References are intentionally excluded from the RR prompt
 
         # Build the context blocks that the model will read
-        events_context = self._format_events_for_assessment(event_data or [])
-        learning_context = self._format_ops_learning_for_assessment(ops_learning_data or [])
+        events_context = self._format_events_for_assessment(relevant_events or [])
+        learning_context = self._format_ops_learning_for_assessment(relevant_learnings or [])
 
-        # If there are no usable sources, return the standard fallback message
-        if (not event_data or len(event_data) == 0) and (not ops_learning_data or len(ops_learning_data) == 0):
-            return "Enough source is not available to answer this question"
 
         # Extract headline facts to ground the instructions
-        top_facts = self._extract_key_facts(event_data, ops_learning_data)
+        top_facts = self._extract_key_facts(relevant_events, relevant_learnings)
         
         # Compose the system prompt using those facts
         system_prompt = self._build_system_prompt(critical_question, area, top_facts)
@@ -2063,11 +2076,6 @@ class RRCapacityTask(BaseAITask):
 
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "assistant", "content": 
-                "Legal framework: National Disaster Management Act 2019 establishes Red Cross auxiliary status with government coordination mandate (Reference: MDRBGD025 – Bangladesh Cyclone Response, 15 January 2024)\n"
-                "Operational capacity: Field Report FR-2023-000045 documents 1,200 volunteers deployed across 8 districts with 25,000 beneficiaries reached (Reference: MDRBGD025 – Bangladesh Cyclone Response, 18 January 2024)\n"
-                "Coordination gaps: Ops-learning from MDRBGD024 identifies 5-day delay in government liaison compared to previous response cycle (Reference: MDRBGD024 – Flood Response Review, 10 November 2023)"
-            },
             {"role": "user", "content": user_content},
         ]
 
@@ -2079,6 +2087,83 @@ class RRCapacityTask(BaseAITask):
             response = self._validate_response_sources(response, events_context, learning_context)
 
         return response
+
+    def _get_text_from_source(self, source: Any) -> str:
+        """Recursively extracts all text from a nested data structure."""
+        text_parts: List[str] = []
+        if isinstance(source, dict):
+            for value in source.values():
+                text_parts.append(self._get_text_from_source(value))
+        elif isinstance(source, list):
+            for item in source:
+                text_parts.append(self._get_text_from_source(item))
+        elif isinstance(source, str):
+            text_parts.append(source)
+        return " ".join([t for t in text_parts if t])
+
+    def _filter_and_rank_sources(self, question_data: Dict[str, Any], all_sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Filters, ranks, and diversifies sources to ensure a mix of relevant events are provided.
+        """
+        try:
+            # Step 1: Build keywords from question, area, and guiding text
+            question_text = str(question_data.get("Critical Questions", "")).lower()
+            area_text = str(question_data.get("Area", "")).lower()
+            guiding_text = str(question_data.get("Guiding/probing questions", "")).lower()
+            raw_tokens = (question_text + " " + area_text + " " + guiding_text).split()
+            stop_words = {"the", "a", "an", "is", "in", "for", "and", "what", "how", "are", "does", "with", "to", "of", "on", "by", "be", "it", "if"}
+            keywords = [k.strip(".,;:()[]{}") for k in raw_tokens if k and k not in stop_words and len(k) > 3]
+
+            if not keywords:
+                return list(all_sources)[:5]
+
+            # Step 2: Score sources
+            scored_sources: List[Dict[str, Any]] = []
+            for source in all_sources:
+                try:
+                    source_text = self._get_text_from_source(source).lower()
+                    score = sum(1 for kw in keywords if kw in source_text)
+                    if score > 0:
+                        # Try to infer an event identifier to support diversification
+                        appeal_code = ""
+                        if isinstance(source, dict):
+                            appeals = source.get("appeals")
+                            if isinstance(appeals, list) and len(appeals) > 0 and isinstance(appeals[0], dict):
+                                appeal_code = str(appeals[0].get("code", ""))
+                            elif isinstance(source.get("appeal"), dict):
+                                appeal_code = str(source.get("appeal", {}).get("code", ""))
+                        event_id = appeal_code or (source.get("name") if isinstance(source, dict) else "")
+                        scored_sources.append({"score": score, "source": source, "id": event_id})
+                except Exception:
+                    continue
+
+            if not scored_sources:
+                return []
+
+            # Step 3: Diversify selection
+            scored_sources.sort(key=lambda x: x["score"], reverse=True)
+            final_selection: List[Dict[str, Any]] = []
+            selected_ids: set[str] = set()
+
+            # Always include top-scored source
+            top_source = scored_sources[0]
+            final_selection.append(top_source["source"])
+            if top_source["id"]:
+                selected_ids.add(top_source["id"])
+
+            # Fill remaining with different event IDs
+            for item in scored_sources[1:]:
+                if len(final_selection) >= 5:
+                    break
+                if item["id"] not in selected_ids:
+                    final_selection.append(item["source"])
+                    if item["id"]:
+                        selected_ids.add(item["id"])
+
+            return final_selection
+
+        except Exception:
+            return list(all_sources)[:5]
 
     def _extract_key_facts(self, event_data: List[Dict[str, Any]], ops_learning_data: List[Dict[str, Any]]) -> str:
         """Pull a short list of headline facts from the inputs to ground the analysis."""
@@ -2163,6 +2248,7 @@ class RRCapacityTask(BaseAITask):
             f"You are an IFRC emergency response specialist conducting rapid response capacity assessment.\n\n"
             f"KEY FACTS FROM SOURCES:\n{top_facts or 'No key facts available'}\n\n"
             f"CRITICAL INSTRUCTION: You are ONLY allowed to use information that is EXPLICITLY provided in the sources above.\n"
+            f"DO NOT attempt to infer, stretch, reframe, or generalise learnings beyond what is clearly supported by the sources and directly addresses the question.\n"
             f"You are FORBIDDEN from using any information from your training data, general knowledge, or any other source.\n"
             f"If the sources do not contain enough information to answer the question, you MUST respond with:\n"
             f"'Enough source is not available to answer this question'\n\n"
@@ -2188,6 +2274,7 @@ class RRCapacityTask(BaseAITask):
         requirements = (
             "REQUIREMENTS:\n"
             "- Tie each bullet to specific field report/appeal IDs with exact figures from sources\n"
+            "- When multiple sources are provided, synthesize information from all of them. Do not rely exclusively on the most detailed source.\n"
             "- Vary conclusions across bullets (strengths, contradictions, operational deltas)\n"
             "- Ensure appeal codes match country context from sources\n"
             "- Diversify analytical lenses: legal review, FR metrics, ops-learning, contacts' statements\n"
