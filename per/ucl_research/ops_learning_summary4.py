@@ -2026,7 +2026,6 @@ class RRCapacityTask(BaseAITask):
         if ops_learning_data is None:
             ops_learning_data = []
 
-        # NEW: Filter and rank sources to reduce repetition and increase relevance per question
         try:
             all_sources: List[Dict[str, Any]] = list(event_data or []) + list(ops_learning_data or [])
             relevant_sources: List[Dict[str, Any]] = self._filter_and_rank_sources(question_data, all_sources)
@@ -2053,9 +2052,6 @@ class RRCapacityTask(BaseAITask):
         events_context = self._format_events_for_assessment(relevant_events or [])
         learning_context = self._format_ops_learning_for_assessment(relevant_learnings or [])
 
-        # If there are no usable sources, return the standard fallback message
-        if (not event_data or len(event_data) == 0) and (not ops_learning_data or len(ops_learning_data) == 0):
-            return "Enough source is not available to answer this question"
 
         # Extract headline facts to ground the instructions
         top_facts = self._extract_key_facts(relevant_events, relevant_learnings)
@@ -2080,11 +2076,6 @@ class RRCapacityTask(BaseAITask):
 
         messages = [
             {"role": "system", "content": system_prompt},
-            # {"role": "assistant", "content": 
-            #     "Legal framework: National Disaster Management Act 2019 establishes Red Cross auxiliary status with government coordination mandate (Reference: MDRBGD025 – Bangladesh Cyclone Response, 15 January 2024)\n"
-            #     "Operational capacity: Field Report FR-2023-000045 documents 1,200 volunteers deployed across 8 districts with 25,000 beneficiaries reached (Reference: MDRBGD025 – Bangladesh Cyclone Response, 18 January 2024)\n"
-            #     "Coordination gaps: Ops-learning from MDRBGD024 identifies 5-day delay in government liaison compared to previous response cycle (Reference: MDRBGD024 – Flood Response Review, 10 November 2023)"
-            # },
             {"role": "user", "content": user_content},
         ]
 
@@ -2097,58 +2088,81 @@ class RRCapacityTask(BaseAITask):
 
         return response
 
+    def _get_text_from_source(self, source: Any) -> str:
+        """Recursively extracts all text from a nested data structure."""
+        text_parts: List[str] = []
+        if isinstance(source, dict):
+            for value in source.values():
+                text_parts.append(self._get_text_from_source(value))
+        elif isinstance(source, list):
+            for item in source:
+                text_parts.append(self._get_text_from_source(item))
+        elif isinstance(source, str):
+            text_parts.append(source)
+        return " ".join([t for t in text_parts if t])
+
     def _filter_and_rank_sources(self, question_data: Dict[str, Any], all_sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        Filters and ranks sources based on simple keyword relevance to the question.
-        This reduces prompt size and repetition by curating a small set of focused sources per question.
+        Filters, ranks, and diversifies sources to ensure a mix of relevant events are provided.
         """
         try:
-            # Extract keywords from the question and the assessment area
+            # Step 1: Build keywords from question, area, and guiding text
             question_text = str(question_data.get("Critical Questions", "")).lower()
             area_text = str(question_data.get("Area", "")).lower()
-            # Optionally include guiding questions text as additional hints
             guiding_text = str(question_data.get("Guiding/probing questions", "")).lower()
-
             raw_tokens = (question_text + " " + area_text + " " + guiding_text).split()
-            candidate_keywords: List[str] = [t.strip(".,;:()[]{}\"'`!") for t in raw_tokens if t]
-
-            stop_words = {
-                "the", "a", "an", "is", "in", "for", "and", "or", "what", "how", "are", "does",
-                "with", "this", "that", "from", "into", "than", "then", "them", "they", "their",
-                "have", "has", "had", "will", "would", "should", "could", "can", "may", "might",
-                "to", "of", "on", "by", "at", "as", "be", "been", "being", "it", "its", "if"
-            }
-
-            keywords: List[str] = [
-                k for k in candidate_keywords
-                if k and k not in stop_words and len(k) > 3
-            ]
+            stop_words = {"the", "a", "an", "is", "in", "for", "and", "what", "how", "are", "does", "with", "to", "of", "on", "by", "be", "it", "if"}
+            keywords = [k.strip(".,;:()[]{}") for k in raw_tokens if k and k not in stop_words and len(k) > 3]
 
             if not keywords:
-                # If no keywords, return at most a small slice of sources to keep prompt compact
                 return list(all_sources)[:5]
 
+            # Step 2: Score sources
             scored_sources: List[Dict[str, Any]] = []
             for source in all_sources:
                 try:
-                    # Combine all string-like values of the source for keyword matching
-                    source_text = " ".join([
-                        str(v) for v in (source.values() if isinstance(source, dict) else [])
-                    ]).lower()
-                    score = 0
-                    for kw in keywords:
-                        if kw in source_text:
-                            score += 1
+                    source_text = self._get_text_from_source(source).lower()
+                    score = sum(1 for kw in keywords if kw in source_text)
                     if score > 0:
-                        scored_sources.append({"score": score, "source": source})
+                        # Try to infer an event identifier to support diversification
+                        appeal_code = ""
+                        if isinstance(source, dict):
+                            appeals = source.get("appeals")
+                            if isinstance(appeals, list) and len(appeals) > 0 and isinstance(appeals[0], dict):
+                                appeal_code = str(appeals[0].get("code", ""))
+                            elif isinstance(source.get("appeal"), dict):
+                                appeal_code = str(source.get("appeal", {}).get("code", ""))
+                        event_id = appeal_code or (source.get("name") if isinstance(source, dict) else "")
+                        scored_sources.append({"score": score, "source": source, "id": event_id})
                 except Exception:
                     continue
 
+            if not scored_sources:
+                return []
+
+            # Step 3: Diversify selection
             scored_sources.sort(key=lambda x: x["score"], reverse=True)
-            # Return the top N most relevant sources
-            return [item["source"] for item in scored_sources[:5]]
+            final_selection: List[Dict[str, Any]] = []
+            selected_ids: set[str] = set()
+
+            # Always include top-scored source
+            top_source = scored_sources[0]
+            final_selection.append(top_source["source"])
+            if top_source["id"]:
+                selected_ids.add(top_source["id"])
+
+            # Fill remaining with different event IDs
+            for item in scored_sources[1:]:
+                if len(final_selection) >= 5:
+                    break
+                if item["id"] not in selected_ids:
+                    final_selection.append(item["source"])
+                    if item["id"]:
+                        selected_ids.add(item["id"])
+
+            return final_selection
+
         except Exception:
-            # On any error, return a small subset to avoid overwhelming the prompt
             return list(all_sources)[:5]
 
     def _extract_key_facts(self, event_data: List[Dict[str, Any]], ops_learning_data: List[Dict[str, Any]]) -> str:
@@ -2260,6 +2274,7 @@ class RRCapacityTask(BaseAITask):
         requirements = (
             "REQUIREMENTS:\n"
             "- Tie each bullet to specific field report/appeal IDs with exact figures from sources\n"
+            "- When multiple sources are provided, synthesize information from all of them. Do not rely exclusively on the most detailed source.\n"
             "- Vary conclusions across bullets (strengths, contradictions, operational deltas)\n"
             "- Ensure appeal codes match country context from sources\n"
             "- Diversify analytical lenses: legal review, FR metrics, ops-learning, contacts' statements\n"
