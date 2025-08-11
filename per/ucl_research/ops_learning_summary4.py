@@ -2030,7 +2030,6 @@ class RRCapacityTask(BaseAITask):
         critical_question = question_data.get("Critical Questions") or ""
         guiding_questions = question_data.get("Guiding/probing questions") or ""
         examples = question_data.get("Examples of recommended actions") or ""
-        # References are intentionally excluded from the RR prompt
 
         # Build the context blocks that the model will read
         events_context = self._format_events_for_assessment(event_data or [])
