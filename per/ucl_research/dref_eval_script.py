@@ -93,14 +93,14 @@ CONSISTENCY_SCORE_STEPS_OPERATIONAL = """
 """
 
 FLUENCY_SCORE_CRITERIA_OPERATIONAL = """
-Fluency (1-3): The quality of the summary in terms of grammar, spelling, and readability.
-- 3: Good. The summary has few or no grammatical errors and is easy to read. The language is professional and appropriate for the intended audience.
-- 2: Fair. The summary has some errors that affect clarity but is still understandable.
+Fluency (1-5): The quality of the summary in terms of grammar, spelling, and readability.
+- 5: Good. The summary has few or no grammatical errors and is easy to read. The language is professional and appropriate for the intended audience.
+- 3: Fair. The summary has some errors that affect clarity but is still understandable.
 - 1: Poor. The summary has many errors that make it hard to understand.
 """
 
 FLUENCY_SCORE_STEPS_OPERATIONAL = """
-Read the summary and evaluate its fluency based on the given criteria. Assign a fluency score from 1 to 3.
+Read the summary and evaluate its fluency based on the given criteria. Assign a fluency score from 1 to 5.
 """
 # --- Step 3: G-Eval Functions ---
 EVALUATION_PROMPT_TEMPLATE = (
@@ -139,7 +139,7 @@ def get_geval_score(task_instance: BaseAITask, criteria: str, steps: str, docume
 # --- Main execution ---
 
 EVALUATION_TASK = BaseAITask()
-TEST_EVENT_ID = 6859
+TEST_EVENT_ID = 7167
 
 document, summary = asyncio.run(get_evaluation_data(TEST_EVENT_ID))
 
