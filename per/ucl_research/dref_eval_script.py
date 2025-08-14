@@ -34,13 +34,23 @@ async def get_evaluation_data(event_id: int):
         return None, None
     dref_data = dref_manager.get_latest_dref_version(dref_data_list[0])
     dref_dict = {
-        'id': dref_data.id, 'title': dref_data.title,
-        'operation_objective': getattr(dref_data, 'operation_objective', None),
-        'response_strategy': getattr(dref_data, 'response_strategy', None),
-        'total_targeted_population': dref_data.total_targeted_population,
-        'amount_requested': dref_data.amount_requested,
-        'operation_timeframe': getattr(dref_data, 'operation_timeframe', None),
-    }
+                'id': dref_data.id,
+                'title': dref_data.title,
+                'operation_objective': getattr(dref_data, 'operation_objective', None),
+                'response_strategy': getattr(dref_data, 'response_strategy', None),
+                'amount_requested': dref_data.amount_requested,
+                'total_targeted_population': dref_data.total_targeted_population,
+                'operation_timeframe': getattr(dref_data, 'operation_timeframe', None),
+                'country_details': {
+                    'name': dref_data.country_details.name if dref_data.country_details else None,
+                    'iso': dref_data.country_details.iso if dref_data.country_details else None
+                },
+                'disaster_type_details': {
+                    'name': dref_data.disaster_type_details.name if dref_data.disaster_type_details else None
+                },
+                'event_date': dref_data.event_date,
+                'end_date': getattr(dref_data, 'end_date', None),
+            }
     task = DrefSummaryTask()
     summary = task.generate_operational_summary(dref_dict)
     document = json.dumps(dref_dict, indent=2)
@@ -139,7 +149,7 @@ def get_geval_score(task_instance: BaseAITask, criteria: str, steps: str, docume
 # --- Main execution ---
 
 EVALUATION_TASK = BaseAITask()
-TEST_EVENT_ID = 7167
+TEST_EVENT_ID = 6950
 
 document, summary = asyncio.run(get_evaluation_data(TEST_EVENT_ID))
 
