@@ -2037,7 +2037,7 @@ class RRCapacityTask(BaseAITask):
                 )
             ]
             if not relevant_sources:
-                return "Enough source is not available to answer this question"
+                return "Not enough source is available to answer this question"
         except Exception:
             # If any error during filtering, gracefully fall back to original inputs
             relevant_events = event_data or []
@@ -2242,7 +2242,7 @@ class RRCapacityTask(BaseAITask):
         
         for code in appeal_codes_in_response:
             if code not in appeal_codes_in_sources:
-                return "Enough source is not available to answer this question"
+                return "Not enough source is available to answer this question"
                 
         return response
 
@@ -2256,13 +2256,13 @@ class RRCapacityTask(BaseAITask):
             f"DO NOT attempt to infer, stretch, reframe, or generalise learnings beyond what is clearly supported by the sources and directly addresses the question.\n"
             f"You are FORBIDDEN from using any information from your training data, general knowledge, or any other source.\n"
             f"If the sources do not contain enough information to answer the question, you MUST respond with:\n"
-            f"'Enough source is not available to answer this question'\n\n"
+            f"'Not enough source is available to answer this question'\n\n"
             f"Keep your response succinct and to the point.\n"
             f"ABSOLUTE RULES:\n"
             f"- ONLY use information explicitly stated in the provided sources above\n"
             f"- NEVER create, invent, infer, assume, or generate ANY information not directly stated in sources\n"
             f"- NEVER use information from your training data or general knowledge\n"
-            f"- If insufficient source data, respond: 'Enough source is not available to answer this question'\n"
+            f"- If insufficient source data, respond: 'Not enough source is available to answer this question'\n"
             f"- Each bullet should include specific facts (numbers, dates, places, named units) from sources\n"
             f"- Format: Label: analysis with specific facts (Reference: CODE – Event, Date)\n"
             f"- Generate 3-4 bullets with diverse analytical perspectives\n"
