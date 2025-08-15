@@ -11,53 +11,97 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "main.settings")
 import django
 django.setup()
 
-# --- imports ---
 from per.ucl_research.ops_learning_summary4 import PreviousCrisesTask, BaseAITask
 from per.ucl_research.ifrc_client import IFRCAPIClient
+from per.ucl_research.rapid_response_parser import RapidResponseCapacityParser
 
 # --- Data Preparation Function ---
 async def get_previous_crises_data(country_id: int, disaster_type_id: int):
     """
-    Prepares the document and summary for evaluating the PreviousCrisesTask,
-    using the same data fetching logic as the original API view.
+    Matches the API view's processing of previous crises insights,
+    but adapted for local evaluation.
     """
     print("Fetching data for Previous Crises evaluation...")
-    task = PreviousCrisesTask()
-    client = IFRCAPIClient()
+    previous_crises_task = PreviousCrisesTask()
 
-    primary = await client.get_ops_learning(country_id, disaster_type_id, max_results=20)
-    if not primary:
-        secondary = await client.get_ops_learning(country_id, None, max_results=20)
-    else:
-        all_country = await client.get_ops_learning(country_id, None, max_results=20)
-        primary_ids = {p['id'] for p in primary}
-        secondary = [l for l in all_country if l['id'] not in primary_ids]
-    
-    merged = primary + secondary
-    seen_ids = set()
-    deduped = []
-    for l in merged:
-        lid = l.get('id')
-        if lid in seen_ids:
-            continue
-        seen_ids.add(lid)
-        deduped.append(l)
+    # Try loading RR questions template (skip if unavailable)
+    try:
+        rr_template = RapidResponseCapacityParser._load_questions_data()
+    except Exception as e:
+        rr_template = []
+        print(f"⚠ Could not load RR questions template: {e}")
 
-    combined_learning = deduped[:20]
-    
-    await client.close()
-    
-    if not combined_learning:
-        print("No operational learnings found for this context.")
+    async with IFRCAPIClient() as client:
+        # STEP 1: Get primary and secondary learnings
+        primary = await client.get_ops_learning(country_id, disaster_type_id, max_results=20)
+        if not primary:
+            secondary = await client.get_ops_learning(country_id, None, max_results=20)
+        else:
+            all_country = await client.get_ops_learning(country_id, None, max_results=20)
+            primary_ids = {p['id'] for p in primary}
+            secondary = [l for l in all_country if l['id'] not in primary_ids]
+
+        merged = primary + secondary
+        seen_ids = set()
+        deduped = []
+        for l in merged:
+            lid = l.get('id')
+            if lid in seen_ids:
+                continue
+            seen_ids.add(lid)
+            deduped.append(l)
+
+        combined_learning = deduped[:20]
+
+        if not combined_learning:
+            print("No operational learnings found for this context.")
+            return None, None
+
+        # STEP 2: Convert raw learning entries into enriched format
+        processed_learnings = [previous_crises_task.create_learning_entry(l) for l in combined_learning]
+        for pl in processed_learnings:
+            ev_id = pl.get("event_id")
+            event = await client.get_event_detail(ev_id) if ev_id else {}
+
+            countries = event.get("countries", []) if isinstance(event.get("countries", []), list) else []
+            dtype_obj = event.get("dtype")
+            dtype_name = dtype_obj.get("name") if isinstance(dtype_obj, dict) else str(dtype_obj) if dtype_obj else None
+
+            pl["event"] = {
+                "id":          event.get("id"),
+                "name":        event.get("name"),
+                "dtype":       dtype_name,
+                "start":       event.get("disaster_start_date"),
+                "countries":   [c.get("name") for c in countries if c],
+                "description": event.get("description") or event.get("summary") or ""
+            }
+
+    # STEP 3: Generate AI summary
+    summary = previous_crises_task.generate_ai_summary([{"related_ops_learning": processed_learnings}])
+
+    if not summary:
+        print("No summary generated — insufficient data.")
         return None, None
-    
-    print(f"Found {len(combined_learning)} learning items.")
-    
-    processed_learnings = [task.create_learning_entry(l) for l in combined_learning]
 
-    summary_list = task.generate_ai_summary([{"related_ops_learning": processed_learnings}])
-    summary = json.dumps(summary_list, indent=2)
+    # STEP 4: Generate RR questions
+    rr_results = previous_crises_task.generate_rr_questions(rr_template, [{"related_ops_learning": summary}])
+    rr_by_title = {r["title"]: r for r in rr_results}
 
+    merged_summary = []
+    for obj in summary:
+        rr = rr_by_title.get(obj["title"], {})
+        merged_summary.append({
+            "title":        obj["title"],
+            "insight":      obj["insight"],
+            "area":         rr.get("area"),
+            "rr_questions": rr.get("rr_questions", []),
+            "source_note":  obj.get("source_note"),
+            "metadata":     obj.get("metadata", {}),
+        })
+
+    summary_json = json.dumps(merged_summary, indent=2)
+
+    # STEP 5: Create document text for evaluation
     def truncate(text: str, max_chars: int = 500) -> str:
         return text if len(text) <= max_chars else text[:max_chars] + "..."
 
@@ -67,22 +111,47 @@ async def get_previous_crises_data(country_id: int, disaster_type_id: int):
         for l in processed_learnings
     )
 
-    return document, summary
+    return document, summary_json
 
-# --- G-Eval Prompts ---
+# --- G-Eval Setup ---
 RELEVANCY_SCORE_CRITERIA = """
-Relevance (1-5): The summary must directly answer the 'Critical Question' using only the information provided in the source document.
-- A score of 5 means the summary provides a clear, direct answer to the question, citing specific evidence from the source text.
-- A score of 3 means the summary attempts to answer the question but is somewhat indirect or misses key evidence from the source.
-- A score of 1 means the summary fails to address the 'Critical Question' at all.
-- NOTE: A high score is also appropriate if the summary correctly concludes that the source document does not contain enough information to answer the question.
+Relevance(1-5) - selection of important content from the source. \
+The summary should only be based of the information from the source document and the learning ids should match. \
+Annotators were instructed to penalize summaries which contained redundancies and excess information.
 """
+
 RELEVANCY_SCORE_STEPS = """
-1. First, identify the 'Critical Question' being asked.
-2. Read the summary and assess how well it answers that specific question.
-3. Verify that any evidence or facts mentioned in the summary are present in the source document ('Events Context' or 'Operational Learning Context').
-4. Assign a relevance score from 1 to 5 based on how directly and accurately the summary addresses the question using ONLY the provided sources.
+1. Read the summary and the source document carefully.
+2. Compare the summary to the source document and identify the main points of the article.
+3. Assess how well the summary covers the main points of the article, and how much irrelevant or redundant information it contains.
+4. Assign a relevance score from 1 to 5.
 """
+
+RR_QUESTION_RELEVANCY_SCORE_CRITERIA= """
+RR questions should be relevant to the insight it is based on. \
+"""
+
+RR_QUESTION_RELEVANCY_SCORE_STEPS = """
+1. Read the summary and the source document carefully.
+2. Compare the summary to the source document and identify the main points of the article.
+3. Assess how well the RR questions are relevant to the insight it is based on.
+4. Assign a relevance score from 1 to 5.
+"""
+
+UNIQUENESS_SCORE_CRITERIA = """
+Uniqueness(1-5) - selection of unique content from the source. \
+Each insight should be unique to one another. \
+Every learning id in the source should not be used more than once. \
+Annotators were instructed to penalize summaries which contained repeated information.
+"""
+
+UNIQUENESS_SCORE_STEPS = """
+1. Read the summary and the source document carefully.
+2. Compare the summary to the source document and identify the main points of the article.
+3. Assess how well the summary covers the main points of the article, and how much irrelevant or redundant information it contains.
+4. Assign a uniqueness score from 1 to 5.
+"""
+
 COHERENCE_SCORE_CRITERIA = """
 Coherence (1-5): The summary must be well-structured and present information in a logical order. The points should be distinct and not repetitive.
 - A score of 5 means the summary's points are logical, well-organized, and easy to follow.
@@ -96,7 +165,7 @@ COHERENCE_SCORE_STEPS = """
 4. Assign a coherence score from 1 to 5.
 """
 CONSISTENCY_SCORE_CRITERIA = """
-Consistency (1-5): The summary must be factually aligned with the source document. All claims, especially references to reports (e.g., MDRKE045), must be traceable to the source.
+Consistency (1-5): The summary must be factually aligned with the source document. All claims, especially references to reports must be traceable to the source and match the learning ids.
 - A score of 5 means all facts and references are identical to the source document.
 - A score of 3 means there is a minor factual discrepancy or a reference is slightly misrepresented.
 - A score of 1 means the summary contains significant factual errors or cites sources not present in the document.
@@ -115,7 +184,6 @@ Fluency (1-5): The quality of the summary in terms of grammar, spelling, and rea
 """
 FLUENCY_SCORE_STEPS = "Read the summary and evaluate its fluency based on the given criteria. Assign a fluency score from 1 to 5."
 
-# --- G-Eval Functions ---
 EVALUATION_PROMPT_TEMPLATE = (
     "You will be given one summary written for an article. Your task is to rate the summary on the metric: {metric_name}.\n\n"
     "Criteria:\n{criteria}\n\nSteps:\n{steps}\n\n"
@@ -127,44 +195,45 @@ EVALUATION_PROMPT_TEMPLATE = (
 )
 
 def get_geval_score(task_instance: BaseAITask, criteria: str, steps: str, document: str, summary: str, metric_name: str):
-    prompt = EVALUATION_PROMPT_TEMPLATE.format(criteria=criteria, steps=steps, metric_name=metric_name, document=document, summary=summary)
+    prompt = EVALUATION_PROMPT_TEMPLATE.format(
+        criteria=criteria, steps=steps, metric_name=metric_name, document=document, summary=summary
+    )
     response = task_instance.get_azure_response(messages=[{"role": "user", "content": prompt}], cache_prefix=f"geval_{metric_name}")
-    if not response: return None
+    if not response:
+        return None
     match = re.search(r"\d+", response)
-    if not match: return None
-    try: return int(match.group(0))
-    except Exception: return None
+    return int(match.group(0)) if match else None
 
-# --- Main Execution Block ---
+# --- Main Execution ---
 async def main():
-    TEST_COUNTRY_ID = 93 # Example: Kenya
-    TEST_DISASTER_TYPE_ID = 12 # Example: Flood
+    TEST_COUNTRY_ID = 136
+    TEST_DISASTER_TYPE_ID = 1
 
     document, summary = await get_previous_crises_data(TEST_COUNTRY_ID, TEST_DISASTER_TYPE_ID)
 
     if document and summary:
-        print("\n--- DOCUMENT (Input to the model) ---")
-        print(document)
-        print("\n--- SUMMARY (Output from the model) ---")
-        print(summary)
+        print("\n--- DOCUMENT ---\n", document)
+        print("\n--- SUMMARY ---\n", summary)
 
         evaluation_metrics = {
             "Relevance": (RELEVANCY_SCORE_CRITERIA, RELEVANCY_SCORE_STEPS),
             "Coherence": (COHERENCE_SCORE_CRITERIA, COHERENCE_SCORE_STEPS),
             "Consistency": (CONSISTENCY_SCORE_CRITERIA, CONSISTENCY_SCORE_STEPS),
             "Fluency": (FLUENCY_SCORE_CRITERIA, FLUENCY_SCORE_STEPS),
+            "RR Question Relevance": (RR_QUESTION_RELEVANCY_SCORE_CRITERIA, RR_QUESTION_RELEVANCY_SCORE_STEPS),
+            "Uniqueness": (UNIQUENESS_SCORE_CRITERIA, UNIQUENESS_SCORE_STEPS),
         }
-        data = {"Evaluation Metric": [], "Score": []}
+
         task_instance = BaseAITask()
+        results = {"Evaluation Metric": [], "Score": []}
 
-        for eval_type, (criteria, steps) in evaluation_metrics.items():
-            score = get_geval_score(task_instance, criteria, steps, document, summary, eval_type)
-            data["Evaluation Metric"].append(eval_type)
-            data["Score"].append(score if score is not None else 0)
+        for metric, (criteria, steps) in evaluation_metrics.items():
+            score = get_geval_score(task_instance, criteria, steps, document, summary, metric)
+            results["Evaluation Metric"].append(metric)
+            results["Score"].append(score or 0)
 
-        df = pd.DataFrame(data).set_index("Evaluation Metric")
-        print("\n--- Evaluation Results ---")
-        print(df)
+        df = pd.DataFrame(results).set_index("Evaluation Metric")
+        print("\n--- Evaluation Results ---\n", df)
 
 if __name__ == "__main__":
     asyncio.run(main())
