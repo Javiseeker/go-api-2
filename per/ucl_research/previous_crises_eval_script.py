@@ -18,15 +18,33 @@ from per.ucl_research.ifrc_client import IFRCAPIClient
 # --- Data Preparation Function ---
 async def get_previous_crises_data(country_id: int, disaster_type_id: int):
     """
-    Prepares the document and summary for evaluating the PreviousCrisesTask.
+    Prepares the document and summary for evaluating the PreviousCrisesTask,
+    using the same data fetching logic as the original API view.
     """
     print("Fetching data for Previous Crises evaluation...")
     task = PreviousCrisesTask()
     client = IFRCAPIClient()
 
     primary = await client.get_ops_learning(country_id, disaster_type_id, max_results=20)
-    secondary = await client.get_ops_learning(country_id, None, max_results=20)
-    combined_learning = (primary + secondary)[:6]
+    if not primary:
+        secondary = await client.get_ops_learning(country_id, None, max_results=20)
+    else:
+        all_country = await client.get_ops_learning(country_id, None, max_results=20)
+        primary_ids = {p['id'] for p in primary}
+        secondary = [l for l in all_country if l['id'] not in primary_ids]
+    
+    merged = primary + secondary
+    seen_ids = set()
+    deduped = []
+    for l in merged:
+        lid = l.get('id')
+        if lid in seen_ids:
+            continue
+        seen_ids.add(lid)
+        deduped.append(l)
+
+    combined_learning = deduped[:20]
+    
     await client.close()
     
     if not combined_learning:
