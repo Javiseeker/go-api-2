@@ -257,15 +257,18 @@ async def main():
     
     # Save results to file
     timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"situational_overview_evaluation_results_{timestamp}.csv"
+    results_dir = os.path.join(os.path.dirname(__file__), "results")
+    os.makedirs(results_dir, exist_ok=True)
+    
+    filename = os.path.join(results_dir, f"situational_overview_evaluation_results_{timestamp}.csv")
     detailed_df.to_csv(filename, index=False)
-    print(f"\nResults saved to: {filename}")
+    print(f"\nResults saved to: {os.path.abspath(filename)}")
     
     # Save full results (including summaries) to JSON
-    json_filename = f"situational_overview_evaluation_full_{timestamp}.json"
+    json_filename = os.path.join(results_dir, f"situational_overview_evaluation_full_{timestamp}.json")
     with open(json_filename, 'w') as f:
         json.dump(results, f, indent=2, default=str)
-    print(f"Full results saved to: {json_filename}")
+    print(f"Full results saved to: {os.path.abspath(json_filename)}")
 
 if __name__ == "__main__":
     # Run the evaluation

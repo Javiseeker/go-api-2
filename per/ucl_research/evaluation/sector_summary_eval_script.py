@@ -142,7 +142,7 @@ async def get_sector_summary_data(event_id: int):
         await client.close()
 
 RELEVANCY_SCORE_CRITERIA_SECTOR = """
-Relevance (1-5): The summary must accurately summarize the 'needs' and 'planned_interventions' for its specific sector from the source JSON.
+Relevance (1-5): The summary must accurately summarize the 'needs_identified' and 'planned_interventions' for its specific sector from the source JSON.
 - A score of 5 means the summary clearly and correctly reflects both the needs and the planned actions.
 - A score of 3 means it covers one area well but misses or misrepresents the other.
 - A score of 1 means it fails to address the core needs and actions for the sector.
@@ -155,11 +155,16 @@ RELEVANCY_SCORE_STEPS_SECTOR = """
 """
 COHERENCE_SCORE_CRITERIA = """
 Coherence (1-5): The sector summary must be well-structured and present information in a logical order.
-- A score of 5 means the needs summary and future actions are clearly organized and flow logically from problem to solution.
+- A score of 5 means the needs summary and future actions are clearly organized and the sector title is related to the needs and future actions summaries.
 - A score of 3 means the information is present but the organization could be improved.
-- A score of 1 means the summary is poorly structured and difficult to follow.
+- A score of 1 means the summary is poorly structured and difficult to follow. Also that the sector title is not related to the needs and future actions summaries.
 """
-COHERENCE_SCORE_STEPS = "1. Read the sector summary. 2. Assess if the needs summary and future actions are presented in a logical order. 3. Check if the flow from identified needs to planned interventions makes sense. 4. Assign a score based on clarity and organization."
+COHERENCE_SCORE_STEPS = """
+1. Read the sector summary.
+2. Assess if the needs summary and future actions are presented in a logical order.
+3. Check if the flow from identified needs to planned interventions makes sense.
+4. Assign a score based on clarity and organization.
+"""
 
 CONSISTENCY_SCORE_CRITERIA = """
 Consistency (1-5): The summary must be factually aligned with the source JSON document.
@@ -332,15 +337,18 @@ async def main():
     
     # Save results to file
     timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"sector_summary_evaluation_results_{timestamp}.csv"
+    results_dir = os.path.join(os.path.dirname(__file__), "results")
+    os.makedirs(results_dir, exist_ok=True)
+    
+    filename = os.path.join(results_dir, f"sector_summary_evaluation_results_{timestamp}.csv")
     detailed_df.to_csv(filename, index=False)
-    print(f"\nResults saved to: {filename}")
+    print(f"\nResults saved to: {os.path.abspath(filename)}")
     
     # Save full results (including summaries) to JSON
-    json_filename = f"sector_summary_evaluation_full_{timestamp}.json"
+    json_filename = os.path.join(results_dir, f"sector_summary_evaluation_full_{timestamp}.json")
     with open(json_filename, 'w') as f:
         json.dump(results, f, indent=2, default=str)
-    print(f"Full results saved to: {json_filename}")
+    print(f"Full results saved to: {os.path.abspath(json_filename)}")
 
 if __name__ == "__main__":
     # Run the evaluation
