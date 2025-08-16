@@ -231,7 +231,7 @@ CONSISTENCY_SCORE_STEPS = """
 """
 FLUENCY_SCORE_CRITERIA = """
 Fluency (1-5): The quality of the capacity assessment summary in terms of grammar, spelling, and readability for humanitarian responders.
-- 5: Excellent. The summary has few or no grammatical errors and is easy to read. The language is professional, clear, and appropriate for humanitarian response planning.
+- 5: Excellent. The summary has few or no grammatical errors and is easy to read. The language is professional and clear.
 - 3: Good. The summary has some errors that affect clarity but is still understandable for responders.
 - 1: Poor. The summary has many errors that make it hard to understand, which could impact response planning decisions.
 """
