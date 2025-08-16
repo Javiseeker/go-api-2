@@ -3,6 +3,7 @@ import asyncio
 import os
 import re
 import pandas as pd
+from typing import List, Dict, Tuple, Optional
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "main.settings")
 import django
@@ -11,6 +12,15 @@ django.setup()
 from per.ucl_research.ops_learning_summary4 import DrefSummaryTask, BaseAITask
 from per.dref_temp.dref_utils import dref_manager, DREFFilters
 from per.ucl_research.ifrc_client import IFRCAPIClient
+
+# Configuration: Add your event IDs here
+EVENT_IDS_TO_EVALUATE = [
+    6952,  # Example ID - replace with your actual IDs
+    # Add more event IDs here as needed
+    # 6953,
+    # 6954,
+    # 6955,
+]
 
 def _get_title(item):
     if hasattr(item, 'title'):
@@ -29,12 +39,10 @@ async def get_sector_summary_data(event_id: int):
         event = await client.get_event_detail(event_id)
         if not event:
             print(f"Event not found for ID: {event_id}")
-            await client.close()
             return []
         
         if not event.get("field_reports"):
             print(f"Field Reports not found for event: {event.get('name', 'Unknown')}")
-            await client.close()
             return []
         
         field_report_ids = [fr['id'] for fr in event["field_reports"]]
@@ -44,7 +52,6 @@ async def get_sector_summary_data(event_id: int):
             print(f"No DREF found for event: {event.get('name', 'Unknown')}")
             print(f"   Field reports count: {len(field_report_ids)}")
             print(f"   Field report IDs: {field_report_ids}")
-            await client.close()
             return []
             
         latest_dref = dref_manager.get_latest_dref_version(dref_data_list[0])
@@ -81,8 +88,6 @@ async def get_sector_summary_data(event_id: int):
         print(f"   Disaster Type: {dref_dict['disaster_type_details']['name']}")
         print(f"   Planned Interventions: {len(dref_dict['planned_interventions'])}")
         print(f"   Needs Identified: {len(dref_dict['needs_identified'])}")
-        
-        await client.close()
 
         print("Generating sector summaries...")
         all_summaries_output = task.generate_dref_summaries(dref_dict)
@@ -132,8 +137,9 @@ async def get_sector_summary_data(event_id: int):
         
     except Exception as e:
         print(f"Error in get_sector_summary_data: {e}")
-        await client.close()
         return []
+    finally:
+        await client.close()
 
 RELEVANCY_SCORE_CRITERIA_SECTOR = """
 Relevance (1-5): The summary must accurately summarize the 'needs' and 'planned_interventions' for its specific sector from the source JSON.
@@ -208,14 +214,17 @@ def get_geval_score(task_instance: BaseAITask, criteria: str, steps: str, docume
     except Exception as e:
         return None
 
-async def main():
-    TEST_EVENT_ID = 6952
-
-    evaluation_list = await get_sector_summary_data(TEST_EVENT_ID)
+async def evaluate_single_event(event_id: int) -> Optional[List[Dict]]:
+    """Evaluate a single event and return the results for all sectors"""
+    print(f"\n--- Processing Event ID: {event_id} ---")
+    
+    evaluation_list = await get_sector_summary_data(event_id)
     if not evaluation_list:
-        print("No sectors with both needs and interventions found to evaluate.")
-        return
-
+        print(f"Skipping event {event_id} - no sectors available for evaluation")
+        return None
+    
+    print(f"Evaluating {len(evaluation_list)} sectors for event {event_id}")
+    
     all_scores = []
     task_instance = BaseAITask()
 
@@ -223,7 +232,7 @@ async def main():
         document = item["document"]
         summary = item["summary"]
         sector = item["sector"]
-        print(f"\n--- Evaluating Sector: {sector} ---")
+        print(f"\n  --- Evaluating Sector: {sector} ---")
 
         evaluation_metrics = {
             "Relevance": (RELEVANCY_SCORE_CRITERIA_SECTOR, RELEVANCY_SCORE_STEPS_SECTOR),
@@ -232,24 +241,107 @@ async def main():
             "Fluency": (FLUENCY_SCORE_CRITERIA, FLUENCY_SCORE_STEPS), 
         }
 
+        sector_scores = {}
         for eval_type, (criteria, steps) in evaluation_metrics.items():
             score = get_geval_score(task_instance, criteria, steps, document, summary, eval_type)
-            all_scores.append({
-                "Sector": sector,
-                "Metric": eval_type,
-                "Score": score if score is not None else 0
-            })
+            score_num = score if isinstance(score, int) else 0
+            sector_scores[eval_type] = score_num
+            print(f"    {eval_type}: {score_num}/5")
+        
+        all_scores.append({
+            "event_id": event_id,
+            "sector": sector,
+            "scores": sector_scores,
+            "needs_count": item["needs_count"],
+            "interventions_count": item["interventions_count"],
+            "summary": summary
+        })
+    
+    return all_scores
 
-    if not all_scores:
-        print("\nNo evaluations were completed.")
+async def evaluate_multiple_events(event_ids: List[int]) -> List[Dict]:
+    """Evaluate multiple events and return all results"""
+    print(f"Starting evaluation of {len(event_ids)} events...")
+    
+    all_results = []
+    for i, event_id in enumerate(event_ids, 1):
+        print(f"\nProgress: {i}/{len(event_ids)}")
+        results = await evaluate_single_event(event_id)
+        if results:
+            all_results.extend(results)
+    
+    return all_results
+
+def create_summary_dataframe(results: List[Dict]) -> pd.DataFrame:
+    """Create a summary DataFrame from all evaluation results"""
+    if not results:
+        return pd.DataFrame()
+    
+    # Create detailed results DataFrame
+    detailed_data = []
+    for result in results:
+        row = {
+            "Event ID": result["event_id"],
+            "Sector": result["sector"],
+            "Needs Count": result["needs_count"],
+            "Interventions Count": result["interventions_count"]
+        }
+        row.update(result["scores"])
+        detailed_data.append(row)
+    
+    detailed_df = pd.DataFrame(detailed_data)
+    
+    # Create summary statistics DataFrame
+    if len(results) > 1:
+        # Group by sector and calculate averages
+        sector_stats = detailed_df.groupby('Sector')[['Relevance', 'Coherence', 'Consistency', 'Fluency']].mean().round(2)
+        
+        # Overall averages across all sectors
+        overall_stats = detailed_df[['Relevance', 'Coherence', 'Consistency', 'Fluency']].mean().round(2)
+        
+        print("\n=== SECTOR AVERAGES ===")
+        print(sector_stats)
+        
+        print("\n=== OVERALL AVERAGES ===")
+        print(overall_stats)
+    
+    return detailed_df
+
+async def main():
+    """Main function to run the evaluation"""
+    if not EVENT_IDS_TO_EVALUATE:
+        print("No event IDs specified in EVENT_IDS_TO_EVALUATE list!")
+        print("Please add event IDs to the EVENT_IDS_TO_EVALUATE list at the top of the script.")
         return
-
-    results_df = pd.DataFrame(all_scores)
-    average_scores = results_df.groupby('Metric')['Score'].mean().reset_index()
-
-    print("\n\n--- Overall Sector Evaluation Results ---")
-    print("\nAverage Scores Across All Sectors:")
-    print(average_scores.round(2))
+    
+    print(f"Evaluating {len(EVENT_IDS_TO_EVALUATE)} events for Sector Summary...")
+    print(f"Event IDs: {EVENT_IDS_TO_EVALUATE}")
+    
+    # Evaluate all events
+    results = await evaluate_multiple_events(EVENT_IDS_TO_EVALUATE)
+    
+    if not results:
+        print("No events were successfully evaluated!")
+        return
+    
+    # Create and display results
+    detailed_df = create_summary_dataframe(results)
+    
+    print("\n=== DETAILED RESULTS ===")
+    print(detailed_df)
+    
+    # Save results to file
+    timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"sector_summary_evaluation_results_{timestamp}.csv"
+    detailed_df.to_csv(filename, index=False)
+    print(f"\nResults saved to: {filename}")
+    
+    # Save full results (including summaries) to JSON
+    json_filename = f"sector_summary_evaluation_full_{timestamp}.json"
+    with open(json_filename, 'w') as f:
+        json.dump(results, f, indent=2, default=str)
+    print(f"Full results saved to: {json_filename}")
 
 if __name__ == "__main__":
+    # Run the evaluation
     asyncio.run(main())

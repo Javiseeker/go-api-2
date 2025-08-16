@@ -3,6 +3,7 @@ import asyncio
 import os
 import re
 import pandas as pd
+from typing import List, Dict, Tuple, Optional
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "main.settings")
 import django
@@ -11,6 +12,15 @@ django.setup()
 from per.ucl_research.ops_learning_summary4 import RRCapacityTask, BaseAITask
 from per.ucl_research.rapid_response_parser import RapidResponseCapacityParser
 from per.ucl_research.ifrc_client import IFRCAPIClient
+
+# Configuration: Add your country/disaster type combinations here
+# Each tuple contains (country_id, disaster_type_id)
+COUNTRY_DISASTER_COMBINATIONS = [
+    (123, 2),  # Replace with your actual combinations
+    # Add more combinations here as needed
+    # (124, 3),
+    # (125, 1),
+]
 
 async def get_rr_capacity_data(country_id: int, disaster_type_id: int, question_index: int = 0):
     parser = RapidResponseCapacityParser()
@@ -121,8 +131,6 @@ async def get_rr_capacity_data(country_id: int, disaster_type_id: int, question_
         
         event_data = events[:5]
         print(f"Fetched {len(event_data)} events with source tracking")
-        
-        await client.close()
 
         task = RRCapacityTask()
         summary = task.generate_response_notes(question_data, event_data, ops_learning_data)
@@ -147,8 +155,9 @@ async def get_rr_capacity_data(country_id: int, disaster_type_id: int, question_
         
     except Exception as e:
         print(f"Error in get_rr_capacity_data: {e}")
-        await client.close()
         return None, None, None
+    finally:
+        await client.close()
 
 RELEVANCY_SCORE_CRITERIA_RR = """
 Relevance (1-5): The summary must directly answer the 'Critical Question' about humanitarian response capacity using only the information provided in the source document.
@@ -171,7 +180,7 @@ Coherence (1-5): The capacity assessment summary must be well-structured and pre
 """
 COHERENCE_SCORE_STEPS = """
 1. Read the summary's bullet points about response capacity.
-2. Assess if the points about capabilities, resources, and readiness are presented in a logical sequence.
+2. Assess if the points are presented in a logical sequence.
 3. Check for clarity and how well each point contributes to the overall capacity assessment.
 4. Assign a coherence score from 1 to 5 based on how well the capacity information flows and connects.
 """
@@ -220,35 +229,32 @@ def get_geval_score(task_instance: BaseAITask, criteria: str, steps: str, docume
     try: return int(match.group(0))
     except Exception: return None
 
-async def main():
-    TEST_COUNTRY_ID = 93
-    TEST_DISASTER_TYPE_ID = 12
-
-    print(f"Starting RR Capacity evaluation for country {TEST_COUNTRY_ID}, disaster type {TEST_DISASTER_TYPE_ID}")
-
+async def evaluate_single_combination(country_id: int, disaster_type_id: int) -> Optional[List[Dict]]:
+    """Evaluate a single country/disaster type combination and return results for all questions"""
+    print(f"\n--- Processing Country {country_id}, Disaster Type {disaster_type_id} ---")
+    print(f"Country ID: {country_id}, Disaster Type ID: {disaster_type_id}")
+    
     parser = RapidResponseCapacityParser()
     all_questions = parser._load_questions_data()
-    print(f"Found {len(all_questions)} questions to evaluate.")
-
+    print(f"Found {len(all_questions)} questions to evaluate for this combination.")
+    
     all_scores = []
     task_instance = BaseAITask()
 
     for i, question in enumerate(all_questions):
-        print(f"\n--- Evaluating Question {i+1}/{len(all_questions)} ---")
-        print(f"Question: {question.get('Critical Questions', 'Unknown')}")
+        print(f"\n  --- Evaluating Question {i+1}/{len(all_questions)} ---")
+        print(f"  Question: {question.get('Critical Questions', 'Unknown')[:100]}...")
         
         try:
-            document, summary, question_data = await get_rr_capacity_data(TEST_COUNTRY_ID, TEST_DISASTER_TYPE_ID, question_index=i)
+            document, summary, question_data = await get_rr_capacity_data(country_id, disaster_type_id, question_index=i)
 
             if not (document and summary and question_data):
-                print(f"Could not get data for question {i+1}. Skipping.")
+                print(f"  Could not get data for question {i+1}. Skipping.")
                 continue
 
             critical_question = question_data.get('Critical Questions') if question_data else 'Unknown'
             full_document_for_eval = f"Critical Question to Answer:\n{critical_question}\n\n---\n\n{document}"
             
-            print(f"Evaluating question: {critical_question[:100]}...")
-
             evaluation_metrics = {
                 "Relevance": (RELEVANCY_SCORE_CRITERIA_RR, RELEVANCY_SCORE_STEPS_RR),
                 "Coherence": (COHERENCE_SCORE_CRITERIA, COHERENCE_SCORE_STEPS),
@@ -256,52 +262,127 @@ async def main():
                 "Fluency": (FLUENCY_SCORE_CRITERIA, FLUENCY_SCORE_STEPS),
             }
 
-            question_scores = []
+            question_scores = {}
             for eval_type, (criteria, steps) in evaluation_metrics.items():
                 score = get_geval_score(task_instance, criteria, steps, full_document_for_eval, summary, eval_type)
-                question_scores.append({
-                    "Question": critical_question,
-                    "Metric": eval_type,
-                    "Score": score if score is not None else 0
-                })
-                all_scores.extend(question_scores)
-                
-            question_df = pd.DataFrame(question_scores)
-            avg_score = question_df['Score'].mean()
-            print(f"Question {i+1} average score: {avg_score:.2f}")
+                score_num = score if isinstance(score, int) else 0
+                question_scores[eval_type] = score_num
+                print(f"    {eval_type}: {score_num}/5")
             
+            all_scores.append({
+                "country_id": country_id,
+                "disaster_type_id": disaster_type_id,
+                "question_index": i,
+                "critical_question": critical_question,
+                "scores": question_scores,
+                "summary": summary
+            })
+                
         except Exception as e:
-            print(f"Error evaluating question {i+1}: {e}")
+            print(f"  Error evaluating question {i+1}: {e}")
             continue
+    
+    if all_scores:
+        avg_score = sum(sum(qs.values()) for qs in [score["scores"] for score in all_scores]) / (len(all_scores) * 4)
+        print(f"\n  Combination average score: {avg_score:.2f}")
+    
+    return all_scores
 
-    if not all_scores:
-        print("\nNo evaluations were completed.")
-        return
+async def evaluate_multiple_combinations(combinations: List[Tuple[int, int]]) -> List[Dict]:
+    """Evaluate multiple country/disaster type combinations and return all results"""
+    print(f"Starting evaluation of {len(combinations)} country/disaster type combinations...")
+    
+    all_results = []
+    for i, (country_id, disaster_type_id) in enumerate(combinations, 1):
+        print(f"\nProgress: {i}/{len(combinations)}")
+        results = await evaluate_single_combination(country_id, disaster_type_id)
+        if results:
+            all_results.extend(results)
+    
+    return all_results
 
-    results_df = pd.DataFrame(all_scores)
-    if results_df.empty:
-        print("\nNo evaluation data available.")
-        return
+def create_summary_dataframe(results: List[Dict]) -> pd.DataFrame:
+    """Create a summary DataFrame from all evaluation results"""
+    if not results:
+        return pd.DataFrame()
+    
+    # Create detailed results DataFrame
+    detailed_data = []
+    for result in results:
+        row = {
+            "Country ID": result["country_id"],
+            "Disaster Type ID": result["disaster_type_id"],
+            "Question Index": result["question_index"],
+            "Critical Question": result["critical_question"][:100] + "..." if len(result["critical_question"]) > 100 else result["critical_question"]
+        }
+        row.update(result["scores"])
+        detailed_data.append(row)
+    
+    detailed_df = pd.DataFrame(detailed_data)
+    
+    # Create summary statistics DataFrame
+    if len(results) > 1:
+        # Group by combination and calculate averages
+        combination_stats = detailed_df.groupby(['Country ID', 'Disaster Type ID'])[['Relevance', 'Coherence', 'Consistency', 'Fluency']].mean().round(2)
         
-    average_scores = results_df.groupby('Metric')['Score'].mean().reset_index()
+        # Overall averages across all combinations and questions
+        overall_stats = detailed_df[['Relevance', 'Coherence', 'Consistency', 'Fluency']].mean().round(2)
+        
+        print("\n=== COMBINATION AVERAGES ===")
+        print(combination_stats)
+        
+        print("\n=== OVERALL AVERAGES ===")
+        print(overall_stats)
+    
+    return detailed_df
 
-    print("\n\n--- Overall Evaluation Results ---")
-    print("\nAverage Scores Across All Questions:")
-    print(average_scores.round(2))
+async def main():
+    """Main function to run the evaluation"""
+    if not COUNTRY_DISASTER_COMBINATIONS:
+        print("No country/disaster type combinations specified in COUNTRY_DISASTER_COMBINATIONS list!")
+        print("Please add combinations to the COUNTRY_DISASTER_COMBINATIONS list at the top of the script.")
+        return
     
-    total_questions = len(all_questions)
-    successful_evaluations = len(set(results_df['Question']))
-    print(f"\nSummary:")
-    print(f"   Total Questions: {total_questions}")
-    print(f"   Successfully Evaluated: {successful_evaluations}")
-    print(f"   Success Rate: {(successful_evaluations/total_questions)*100:.1f}%")
+    print(f"Evaluating {len(COUNTRY_DISASTER_COMBINATIONS)} country/disaster type combinations for RR Capacity...")
+    for country_id, disaster_type_id in COUNTRY_DISASTER_COMBINATIONS:
+        print(f"  - Country {country_id}, Disaster Type {disaster_type_id}")
     
-    question_performance = results_df.groupby('Question')['Score'].mean().sort_values(ascending=False)
-    if not question_performance.empty:
-        print(f"\nBest performing question: {question_performance.index[0][:50]}... (Score: {question_performance.iloc[0]:.2f})")
-        print(f"Worst performing question: {question_performance.index[-1][:50]}... (Score: {question_performance.iloc[-1]:.2f})")
-    else:
-        print("\nNo question performance data available")
+    # Evaluate all combinations
+    results = await evaluate_multiple_combinations(COUNTRY_DISASTER_COMBINATIONS)
+    
+    if not results:
+        print("No combinations were successfully evaluated!")
+        return
+    
+    # Create and display results
+    detailed_df = create_summary_dataframe(results)
+    
+    print("\n=== DETAILED RESULTS ===")
+    print(detailed_df)
+    
+    # Save results to file
+    timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"rr_capacity_evaluation_results_{timestamp}.csv"
+    detailed_df.to_csv(filename, index=False)
+    print(f"\nResults saved to: {filename}")
+    
+    # Save full results (including summaries) to JSON
+    json_filename = f"rr_capacity_evaluation_full_{timestamp}.json"
+    with open(json_filename, 'w') as f:
+        json.dump(results, f, indent=2, default=str)
+    print(f"Full results saved to: {json_filename}")
+    
+    # Print summary statistics
+    total_combinations = len(COUNTRY_DISASTER_COMBINATIONS)
+    successful_combinations = len(set((r["country_id"], r["disaster_type_id"]) for r in results))
+    total_questions = len(set((r["country_id"], r["disaster_type_id"], r["question_index"]) for r in results))
+    
+    print(f"\n=== EVALUATION SUMMARY ===")
+    print(f"Total Combinations: {total_combinations}")
+    print(f"Successfully Evaluated: {successful_combinations}")
+    print(f"Total Questions Evaluated: {total_questions}")
+    print(f"Success Rate: {(successful_combinations/total_combinations)*100:.1f}%")
 
 if __name__ == "__main__":
+    # Run the evaluation
     asyncio.run(main())

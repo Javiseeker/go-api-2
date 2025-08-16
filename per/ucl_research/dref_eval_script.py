@@ -3,6 +3,7 @@ import asyncio
 import os
 import re
 import pandas as pd
+from typing import List, Dict, Tuple, Optional
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "main.settings")
 try:
@@ -15,44 +16,61 @@ from per.ucl_research.ops_learning_summary4 import DrefSummaryTask, BaseAITask
 from per.dref_temp.dref_utils import dref_manager, DREFFilters
 from per.ucl_research.ifrc_client import IFRCAPIClient
 
+# Configuration: Add your event IDs here
+EVENT_IDS_TO_EVALUATE = [
+    6950,  # Example ID - replace with your actual IDs
+    # Add more event IDs here as needed
+    # 6951,
+    # 6952,
+    # 6953,
+]
+
 async def get_evaluation_data(event_id: int):
     client = IFRCAPIClient()
-    event = await client.get_event_detail(event_id)
-    if not event or not event.get("field_reports"):
-        print(f"No event or field reports found for event_id: {event_id}")
-        await client.close()
+    try:
+        event = await client.get_event_detail(event_id)
+        if not event or not event.get("field_reports"):
+            print(f"No event or field reports found for event_id: {event_id}")
+            return None, None
+        
+        field_report_ids = [fr['id'] for fr in event["field_reports"]]
+        filters = DREFFilters(field_report_ids=field_report_ids)
+        dref_data_list = dref_manager.get_data("basic", filters)
+        
+        if not dref_data_list:
+            print(f"No DREF data found for event_id: {event_id}")
+            return None, None
+        
+        dref_data = dref_manager.get_latest_dref_version(dref_data_list[0])
+        dref_dict = {
+            'id': dref_data.id,
+            'title': dref_data.title,
+            'operation_objective': getattr(dref_data, 'operation_objective', None),
+            'response_strategy': getattr(dref_data, 'response_strategy', None),
+            'amount_requested': dref_data.amount_requested,
+            'total_targeted_population': dref_data.total_targeted_population,
+            'operation_timeframe': getattr(dref_data, 'operation_timeframe', None),
+            'country_details': {
+                'name': dref_data.country_details.name if dref_data.country_details else None,
+                'iso': dref_data.country_details.iso if dref_data.country_details else None
+            },
+            'disaster_type_details': {
+                'name': dref_data.disaster_type_details.name if dref_data.disaster_type_details else None
+            },
+            'event_date': dref_data.event_date,
+            'end_date': getattr(dref_data, 'end_date', None),
+        }
+        
+        task = DrefSummaryTask()
+        summary = task.generate_operational_summary(dref_dict)
+        document = json.dumps(dref_dict, indent=2)
+        
+        return document, summary
+    except Exception as e:
+        print(f"Error processing event_id {event_id}: {str(e)}")
         return None, None
-    field_report_ids = [fr['id'] for fr in event["field_reports"]]
-    filters = DREFFilters(field_report_ids=field_report_ids)
-    dref_data_list = dref_manager.get_data("basic", filters)
-    if not dref_data_list:
-        print(f"No DREF data found for event_id: {event_id}")
+    finally:
         await client.close()
-        return None, None
-    dref_data = dref_manager.get_latest_dref_version(dref_data_list[0])
-    dref_dict = {
-                'id': dref_data.id,
-                'title': dref_data.title,
-                'operation_objective': getattr(dref_data, 'operation_objective', None),
-                'response_strategy': getattr(dref_data, 'response_strategy', None),
-                'amount_requested': dref_data.amount_requested,
-                'total_targeted_population': dref_data.total_targeted_population,
-                'operation_timeframe': getattr(dref_data, 'operation_timeframe', None),
-                'country_details': {
-                    'name': dref_data.country_details.name if dref_data.country_details else None,
-                    'iso': dref_data.country_details.iso if dref_data.country_details else None
-                },
-                'disaster_type_details': {
-                    'name': dref_data.disaster_type_details.name if dref_data.disaster_type_details else None
-                },
-                'event_date': dref_data.event_date,
-                'end_date': getattr(dref_data, 'end_date', None),
-            }
-    task = DrefSummaryTask()
-    summary = task.generate_operational_summary(dref_dict)
-    document = json.dumps(dref_dict, indent=2)
-    await client.close()
-    return document, summary
 
 RELEVANCY_SCORE_CRITERIA_OPERATIONAL = """
 Relevance (1-5): The summary must accurately capture the key operational details from the source JSON document.
@@ -140,15 +158,16 @@ def get_geval_score(task_instance: BaseAITask, criteria: str, steps: str, docume
     except Exception:
         return None
 
-EVALUATION_TASK = BaseAITask()
-TEST_EVENT_ID = 6950
-
-document, summary = asyncio.run(get_evaluation_data(TEST_EVENT_ID))
-
-if document and summary:
-    print("Evaluating the following summary:\n---")
-    print(summary)
-    print("---\n")
+async def evaluate_single_event(event_id: int) -> Optional[Dict]:
+    """Evaluate a single event and return the results"""
+    print(f"\n--- Processing Event ID: {event_id} ---")
+    
+    document, summary = await get_evaluation_data(event_id)
+    if not document or not summary:
+        print(f"Skipping event {event_id} - no data available")
+        return None
+    
+    print(f"Generated summary for event {event_id}")
     
     evaluation_metrics = {
         "Relevance": (RELEVANCY_SCORE_CRITERIA_OPERATIONAL, RELEVANCY_SCORE_STEPS_OPERATIONAL),
@@ -156,13 +175,96 @@ if document and summary:
         "Consistency": (CONSISTENCY_SCORE_CRITERIA_OPERATIONAL, CONSISTENCY_SCORE_STEPS_OPERATIONAL),
         "Fluency": (FLUENCY_SCORE_CRITERIA_OPERATIONAL, FLUENCY_SCORE_STEPS_OPERATIONAL),
     }
-
-    data = {"Evaluation Metric": [], "Score": []}
+    
+    results = {
+        "event_id": event_id,
+        "summary": summary,
+        "scores": {}
+    }
+    
     for eval_type, (criteria, steps) in evaluation_metrics.items():
         score_value = get_geval_score(EVALUATION_TASK, criteria, steps, document, summary, eval_type)
         score_num = score_value if isinstance(score_value, int) else 0
-        data["Evaluation Metric"].append(eval_type)
-        data["Score"].append(score_num)
+        results["scores"][eval_type] = score_num
+        print(f"  {eval_type}: {score_num}/5")
+    
+    return results
 
-    df = pd.DataFrame(data).set_index("Evaluation Metric")
-    print(df)
+async def evaluate_multiple_events(event_ids: List[int]) -> List[Dict]:
+    """Evaluate multiple events and return all results"""
+    print(f"Starting evaluation of {len(event_ids)} events...")
+    
+    results = []
+    for i, event_id in enumerate(event_ids, 1):
+        print(f"\nProgress: {i}/{len(event_ids)}")
+        result = await evaluate_single_event(event_id)
+        if result:
+            results.append(result)
+    
+    return results
+
+def create_summary_dataframe(results: List[Dict]) -> pd.DataFrame:
+    """Create a summary DataFrame from all evaluation results"""
+    if not results:
+        return pd.DataFrame()
+    
+    # Create detailed results DataFrame
+    detailed_data = []
+    for result in results:
+        row = {"Event ID": result["event_id"]}
+        row.update(result["scores"])
+        detailed_data.append(row)
+    
+    detailed_df = pd.DataFrame(detailed_data)
+    
+    # Create summary statistics DataFrame
+    if len(results) > 1:
+        summary_stats = detailed_df.describe()
+        summary_stats = summary_stats.drop("Event ID", axis=1, errors='ignore')
+        summary_stats = summary_stats.round(2)
+        
+        print("\n=== SUMMARY STATISTICS ===")
+        print(summary_stats)
+    
+    return detailed_df
+
+async def main():
+    """Main function to run the evaluation"""
+    if not EVENT_IDS_TO_EVALUATE:
+        print("No event IDs specified in EVENT_IDS_TO_EVALUATE list!")
+        print("Please add event IDs to the EVENT_IDS_TO_EVALUATE list at the top of the script.")
+        return
+    
+    print(f"Evaluating {len(EVENT_IDS_TO_EVALUATE)} events...")
+    print(f"Event IDs: {EVENT_IDS_TO_EVALUATE}")
+    
+    # Evaluate all events
+    results = await evaluate_multiple_events(EVENT_IDS_TO_EVALUATE)
+    
+    if not results:
+        print("No events were successfully evaluated!")
+        return
+    
+    # Create and display results
+    detailed_df = create_summary_dataframe(results)
+    
+    print("\n=== DETAILED RESULTS ===")
+    print(detailed_df)
+    
+    # Save results to file
+    timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"dref_evaluation_results_{timestamp}.csv"
+    detailed_df.to_csv(filename, index=False)
+    print(f"\nResults saved to: {filename}")
+    
+    # Save full results (including summaries) to JSON
+    json_filename = f"dref_evaluation_full_{timestamp}.json"
+    with open(json_filename, 'w') as f:
+        json.dump(results, f, indent=2, default=str)
+    print(f"Full results saved to: {json_filename}")
+
+if __name__ == "__main__":
+    EVALUATION_TASK = BaseAITask()
+    
+    # Run the evaluation
+    asyncio.run(main())
