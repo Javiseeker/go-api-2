@@ -187,6 +187,23 @@ UNIQUENESS_SCORE_STEPS = """
 3. Identify if multiple bullet points are making the same fundamental point (e.g., "lack of coordination" and "poor collaboration").
 4. Assign a score based on how much unique information is presented.
 """
+
+INSIGHTFULNESS_SCORE_CRITERIA = """
+Insightfulness (1–5): The capacity assessment summary must highlight findings that are meaningful, analytical, and useful for humanitarian response planning.
+- A score of 5 means the summary provides sharp, decision-relevant insights — it emphasizes the most important strengths, critical gaps, or operational risks, not just surface-level details.
+- A score of 3 means the summary includes some useful observations but also highlights minor, obvious, or less impactful points without strong analysis.
+- A score of 1 means the summary mostly repeats trivial facts or weak findings, adding little value for understanding response capacity.
+NOTE: A high score is also appropriate if the summary correctly concludes that the source document does not contain enough information to provide deeper analytical insights.
+"""
+
+INSIGHTFULNESS_SCORE_STEPS = """
+Read the summary and identify the findings presented.
+Assess whether each finding provides analytical value (e.g., does it highlight a critical enabler, bottleneck, gap, or actionable lesson for humanitarian response?).
+Check if the summary avoids overemphasizing trivial, repetitive, or obvious details (e.g., repeating staff numbers without added analysis).
+Determine whether the findings help responders gain a deeper understanding of operational capacity.
+Assign an insightfulness score from 1 to 5 based on the depth and usefulness of the insights provided.
+"""
+
 COHERENCE_SCORE_CRITERIA = """
 Coherence (1-5): The capacity assessment summary must be well-structured and present information in a logical order that builds a clear picture of response capabilities.
 - A score of 5 means the summary's points about response capacity are logical and well-organized creating a coherent assessment of capabilities.
@@ -277,6 +294,7 @@ async def evaluate_single_combination(country_id: int, disaster_type_id: int) ->
                 "Consistency": (CONSISTENCY_SCORE_CRITERIA, CONSISTENCY_SCORE_STEPS),
                 "Fluency": (FLUENCY_SCORE_CRITERIA, FLUENCY_SCORE_STEPS),
                 "Uniqueness": (UNIQUENESS_SCORE_CRITERIA, UNIQUENESS_SCORE_STEPS),
+                "Insightfulness": (INSIGHTFULNESS_SCORE_CRITERIA, INSIGHTFULNESS_SCORE_STEPS),
             }
 
             question_scores = {}
@@ -300,7 +318,7 @@ async def evaluate_single_combination(country_id: int, disaster_type_id: int) ->
             continue
     
     if all_scores:
-        avg_score = sum(sum(qs.values()) for qs in [score["scores"] for score in all_scores]) / (len(all_scores) * 4)
+        avg_score = sum(sum(qs.values()) for qs in [score["scores"] for score in all_scores]) / (len(all_scores) * 6)
         print(f"\n  Combination average score: {avg_score:.2f}")
     
     return all_scores
@@ -335,16 +353,17 @@ def create_summary_dataframe(results: List[Dict]) -> pd.DataFrame:
                 "Coherence": result["scores"]["Coherence"],
                 "Consistency": result["scores"]["Consistency"],
                 "Fluency": result["scores"]["Fluency"],
-                "Uniqueness": result["scores"]["Uniqueness"]
+                "Uniqueness": result["scores"]["Uniqueness"],
+                "Insightfulness": result["scores"]["Insightfulness"]
             }
             for result in results
         ])
         
         # Group by combination and calculate averages
-        combination_stats = detailed_df.groupby(['Country ID', 'Disaster Type ID'])[['Relevance', 'Coherence', 'Consistency', 'Fluency', 'Uniqueness']].mean().round(2)
+        combination_stats = detailed_df.groupby(['Country ID', 'Disaster Type ID'])[['Relevance', 'Coherence', 'Consistency', 'Fluency', 'Uniqueness', 'Insightfulness']].mean().round(2)
         
         # Overall averages across all combinations and questions
-        overall_stats = detailed_df[['Relevance', 'Coherence', 'Consistency', 'Fluency', 'Uniqueness']].mean().round(2)
+        overall_stats = detailed_df[['Relevance', 'Coherence', 'Consistency', 'Fluency', 'Uniqueness', 'Insightfulness']].mean().round(2)
         
         print("\n=== COMBINATION AVERAGES ===")
         print(combination_stats)
@@ -381,14 +400,18 @@ async def main():
         print("\n=== SUMMARY RESULTS (Country/Disaster Averages) ===")
         print(summary_df)
         
+        # Create results directory if it doesn't exist
+        results_dir = os.path.join(os.path.dirname(__file__), "results")
+        os.makedirs(results_dir, exist_ok=True)
+        
         # Save summary results to file
         timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"rr_capacity_evaluation_results_{timestamp}.csv"
+        filename = os.path.join(results_dir, f"rr_capacity_evaluation_results_{timestamp}.csv")
         summary_df.to_csv(filename, index=False)
         print(f"\nSummary results saved to: {filename}")
         
         # Save full results (including summaries) to JSON for reference
-        json_filename = f"rr_capacity_evaluation_full_{timestamp}.json"
+        json_filename = os.path.join(results_dir, f"rr_capacity_evaluation_full_{timestamp}.json")
         with open(json_filename, 'w') as f:
             json.dump(results, f, indent=2, default=str)
         print(f"Full results saved to: {json_filename}")

@@ -236,6 +236,14 @@ async def evaluate_single_combination(country_id: int, disaster_type_id: int) ->
     
     print(f"Generated previous crises analysis for Country {country_id}, Disaster Type {disaster_type_id}")
     
+    # Parse the JSON summary to extract individual insights
+    try:
+        insights_data = json.loads(summary)
+        print(f"  Found {len(insights_data)} individual insights to evaluate")
+    except json.JSONDecodeError:
+        print(f"  Error parsing summary JSON, treating as single summary")
+        insights_data = [{"insight": summary, "title": "Single Summary"}]
+    
     evaluation_metrics = {
         "Relevance": (INSIGHT_RELEVANCY_SCORE_CRITERIA, INSIGHT_RELEVANCY_SCORE_STEPS),
         "Coherence": (COHERENCE_SCORE_CRITERIA, COHERENCE_SCORE_STEPS),
@@ -244,20 +252,49 @@ async def evaluate_single_combination(country_id: int, disaster_type_id: int) ->
         "Uniqueness": (UNIQUENESS_SCORE_CRITERIA, UNIQUENESS_SCORE_STEPS),
     }
     
+    task_instance = BaseAITask()
+    
+    # Evaluate each insight individually
+    individual_insight_scores = []
+    
+    for i, insight in enumerate(insights_data):
+        insight_text = insight.get("insight", str(insight))
+        insight_title = insight.get("title", f"Insight {i+1}")
+        
+        print(f"\n    --- Evaluating Insight {i+1}: {insight_title[:50]}... ---")
+        
+        insight_scores = {}
+        for eval_type, (criteria, steps) in evaluation_metrics.items():
+            score_value = get_geval_score(task_instance, criteria, steps, document, insight_text, eval_type)
+            score_num = score_value if isinstance(score_value, int) else 0
+            insight_scores[eval_type] = score_num
+            print(f"      {eval_type}: {score_num}/5")
+        
+        individual_insight_scores.append({
+            "insight_index": i,
+            "insight_title": insight_title,
+            "insight_text": insight_text[:200] + "..." if len(insight_text) > 200 else insight_text,
+            "scores": insight_scores
+        })
+    
+    # Calculate average scores across all insights
+    avg_scores = {}
+    if individual_insight_scores:
+        for metric in evaluation_metrics.keys():
+            metric_scores = [insight["scores"][metric] for insight in individual_insight_scores]
+            avg_scores[metric] = sum(metric_scores) / len(metric_scores)
+        
+        print(f"\n    --- AVERAGE SCORES ACROSS {len(individual_insight_scores)} INSIGHTS ---")
+        for metric, avg_score in avg_scores.items():
+            print(f"      {metric}: {avg_score:.2f}/5")
+    
     results = {
         "country_id": country_id,
         "disaster_type_id": disaster_type_id,
-        "scores": {},
+        "avg_scores": avg_scores,
+        "individual_insights": individual_insight_scores,
         "summary": summary
     }
-    
-    task_instance = BaseAITask()
-    
-    for eval_type, (criteria, steps) in evaluation_metrics.items():
-        score_value = get_geval_score(task_instance, criteria, steps, document, summary, eval_type)
-        score_num = score_value if isinstance(score_value, int) else 0
-        results["scores"][eval_type] = score_num
-        print(f"  {eval_type}: {score_num}/5")
     
     return results
 
@@ -279,14 +316,14 @@ def create_summary_dataframe(results: List[Dict]) -> pd.DataFrame:
     if not results:
         return pd.DataFrame()
     
-    # Create detailed results DataFrame
+    # Create detailed results DataFrame with average scores
     detailed_data = []
     for result in results:
         row = {
             "Country ID": result["country_id"],
             "Disaster Type ID": result["disaster_type_id"]
         }
-        row.update(result["scores"])
+        row.update(result["avg_scores"])
         detailed_data.append(row)
     
     detailed_df = pd.DataFrame(detailed_data)
