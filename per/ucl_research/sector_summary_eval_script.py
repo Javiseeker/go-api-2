@@ -1,24 +1,18 @@
-# sector_summary_eval.py
-
 import json
 import asyncio
 import os
 import re
 import pandas as pd
 
-# Initialize Django
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "main.settings")
 import django
 django.setup()
 
-# --- Your application's imports ---
 from per.ucl_research.ops_learning_summary4 import DrefSummaryTask, BaseAITask
 from per.dref_temp.dref_utils import dref_manager, DREFFilters
 from per.ucl_research.ifrc_client import IFRCAPIClient
 
-# --- Helper Functions ---
 def _get_title(item):
-    """Safely extract title from either a Django model object or dictionary"""
     if hasattr(item, 'title'):
         return getattr(item, 'title', '')
     elif isinstance(item, dict):
@@ -26,28 +20,20 @@ def _get_title(item):
     else:
         return str(item) if item else ''
 
-# --- Data Preparation Function ---
 async def get_sector_summary_data(event_id: int):
-    """
-    Prepares data for evaluating the sector summaries task.
-    This function mimics the exact logic used in DrefSummaryView._process_dref_summary
-    Returns a list of dictionaries, one for each sector,
-    each containing a document and a summary to evaluate.
-    """
     print(f"Fetching data for Sector Summary evaluation for event_id: {event_id}...")
     client = IFRCAPIClient()
     task = DrefSummaryTask()
 
     try:
-        # 1. Fetch the full DREF data dictionary (logic from DrefSummaryView)
         event = await client.get_event_detail(event_id)
         if not event:
-            print(f"❌ Event not found for ID: {event_id}")
+            print(f"Event not found for ID: {event_id}")
             await client.close()
             return []
         
         if not event.get("field_reports"):
-            print(f"❌ Field Reports not found for event: {event.get('name', 'Unknown')}")
+            print(f"Field Reports not found for event: {event.get('name', 'Unknown')}")
             await client.close()
             return []
         
@@ -55,7 +41,7 @@ async def get_sector_summary_data(event_id: int):
         dref_data_list = dref_manager.get_data("basic", DREFFilters(field_report_ids=field_report_ids))
         
         if not dref_data_list:
-            print(f"❌ No DREF found for event: {event.get('name', 'Unknown')}")
+            print(f"No DREF found for event: {event.get('name', 'Unknown')}")
             print(f"   Field reports count: {len(field_report_ids)}")
             print(f"   Field report IDs: {field_report_ids}")
             await client.close()
@@ -63,7 +49,6 @@ async def get_sector_summary_data(event_id: int):
             
         latest_dref = dref_manager.get_latest_dref_version(dref_data_list[0])
         
-        # Use the EXACT same DREF dictionary structure as the API
         dref_dict = {
             'id': latest_dref.id,
             'title': latest_dref.title,
@@ -90,7 +75,7 @@ async def get_sector_summary_data(event_id: int):
             'pmer': getattr(latest_dref, 'pmer', None)
         }
         
-        print(f"✅ Successfully prepared DREF data for event: {event.get('name', 'Unknown')}")
+        print(f"Successfully prepared DREF data for event: {event.get('name', 'Unknown')}")
         print(f"   DREF ID: {latest_dref.id}")
         print(f"   Country: {dref_dict['country_details']['name']}")
         print(f"   Disaster Type: {dref_dict['disaster_type_details']['name']}")
@@ -99,22 +84,18 @@ async def get_sector_summary_data(event_id: int):
         
         await client.close()
 
-        # 2. Generate the actual summaries using the SAME method as the API
-        print("🔄 Generating sector summaries...")
+        print("Generating sector summaries...")
         all_summaries_output = task.generate_dref_summaries(dref_dict)
         
         if not all_summaries_output or all_summaries_output.get("status") == "failed":
-            print(f"❌ Failed to generate DREF summaries: {all_summaries_output.get('errors', [])}")
+            print(f"Failed to generate DREF summaries: {all_summaries_output.get('errors', [])}")
             return []
         
         generated_sectors = {s['title']: s for s in all_summaries_output.get("sectors", [])}
-        print(f"✅ Generated {len(generated_sectors)} sector summaries")
+        print(f"Generated {len(generated_sectors)} sector summaries")
 
-        # 3. Prepare evaluation data for each sector
         eval_list = []
         for sector_title, generated_summary in generated_sectors.items():
-            # The 'document' should contain the sector-specific data that was used to generate this summary
-            # We need to extract the relevant data for this specific sector
             sector_specific_data = {
                 'sector_title': sector_title,
                 'needs_identified': [n for n in dref_dict['needs_identified'] if _get_title(n) == sector_title],
@@ -129,7 +110,6 @@ async def get_sector_summary_data(event_id: int):
             
             document = json.dumps(sector_specific_data, indent=2, default=str)
 
-            # The 'summary' is the combined text of the generated summaries for this sector
             summary = (
                 f"Needs Summary: {generated_summary.get('needs_summary', '')}\n\n"
                 "Future Actions:\n" + 
@@ -144,18 +124,17 @@ async def get_sector_summary_data(event_id: int):
                 "interventions_count": len(sector_specific_data['planned_interventions'])
             })
         
-        print(f"✅ Prepared {len(eval_list)} sectors for evaluation")
+        print(f"Prepared {len(eval_list)} sectors for evaluation")
         for item in eval_list:
             print(f"   - {item['sector']}: {item['needs_count']} needs, {item['interventions_count']} interventions")
         
         return eval_list
         
     except Exception as e:
-        print(f"❌ Error in get_sector_summary_data: {e}")
+        print(f"Error in get_sector_summary_data: {e}")
         await client.close()
         return []
 
-# --- Adapted G-Eval Prompts for Sector Summaries ---
 RELEVANCY_SCORE_CRITERIA_SECTOR = """
 Relevance (1-5): The summary must accurately summarize the 'needs' and 'planned_interventions' for its specific sector from the source JSON.
 - A score of 5 means the summary clearly and correctly reflects both the needs and the planned actions.
@@ -203,7 +182,6 @@ EVALUATION_PROMPT_TEMPLATE = (
 )
 
 def get_geval_score(task_instance: BaseAITask, criteria: str, steps: str, document: str, summary: str, metric_name: str):
-    """Build prompt, call model, and parse a numeric score; return int or None."""
     prompt = EVALUATION_PROMPT_TEMPLATE.format(
         criteria=criteria,
         steps=steps,
@@ -220,7 +198,6 @@ def get_geval_score(task_instance: BaseAITask, criteria: str, steps: str, docume
     if not response:
         return None
     
-    # Safely find the first number in the response string
     match = re.search(r"\d+", response)
     if not match:
         return None
@@ -231,7 +208,6 @@ def get_geval_score(task_instance: BaseAITask, criteria: str, steps: str, docume
     except Exception as e:
         return None
 
-# --- Main Execution Block ---
 async def main():
     TEST_EVENT_ID = 6952
 

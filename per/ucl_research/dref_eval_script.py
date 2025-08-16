@@ -2,22 +2,19 @@ import json
 import asyncio
 import os
 import re
-import pandas as pd  # type: ignore
+import pandas as pd
 
-# Initialize Django BEFORE importing modules that access settings/models
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "main.settings")
 try:
-    import django  # type: ignore
+    import django
     django.setup()
 except Exception:
     pass
 
-# --- imports ---
 from per.ucl_research.ops_learning_summary4 import DrefSummaryTask, BaseAITask
 from per.dref_temp.dref_utils import dref_manager, DREFFilters
 from per.ucl_research.ifrc_client import IFRCAPIClient
 
-# --- Step 1: Data Preparation Function  ---
 async def get_evaluation_data(event_id: int):
     client = IFRCAPIClient()
     event = await client.get_event_detail(event_id)
@@ -56,8 +53,6 @@ async def get_evaluation_data(event_id: int):
     document = json.dumps(dref_dict, indent=2)
     await client.close()
     return document, summary
-
-# --- Step 2: Adapted Prompts---
 
 RELEVANCY_SCORE_CRITERIA_OPERATIONAL = """
 Relevance (1-5): The summary must accurately capture the key operational details from the source JSON document.
@@ -112,7 +107,7 @@ Fluency (1-5): The quality of the summary in terms of grammar, spelling, and rea
 FLUENCY_SCORE_STEPS_OPERATIONAL = """
 Read the summary and evaluate its fluency based on the given criteria. Assign a fluency score from 1 to 5.
 """
-# --- Step 3: G-Eval Functions ---
+
 EVALUATION_PROMPT_TEMPLATE = (
     "You will be given one summary written for an article. Your task is to rate the summary on the metric: {metric_name}.\n\n"
     "Criteria:\n{criteria}\n\nSteps:\n{steps}\n\n"
@@ -124,7 +119,6 @@ EVALUATION_PROMPT_TEMPLATE = (
 )
 
 def get_geval_score(task_instance: BaseAITask, criteria: str, steps: str, document: str, summary: str, metric_name: str):
-    """Build prompt, call model, and parse a numeric score; return int or None."""
     prompt = EVALUATION_PROMPT_TEMPLATE.format(
         criteria=criteria,
         steps=steps,
@@ -146,8 +140,6 @@ def get_geval_score(task_instance: BaseAITask, criteria: str, steps: str, docume
     except Exception:
         return None
 
-# --- Main execution ---
-
 EVALUATION_TASK = BaseAITask()
 TEST_EVENT_ID = 6950
 
@@ -167,7 +159,6 @@ if document and summary:
 
     data = {"Evaluation Metric": [], "Score": []}
     for eval_type, (criteria, steps) in evaluation_metrics.items():
-        # Pass the task instance into the function
         score_value = get_geval_score(EVALUATION_TASK, criteria, steps, document, summary, eval_type)
         score_num = score_value if isinstance(score_value, int) else 0
         data["Evaluation Metric"].append(eval_type)

@@ -1,61 +1,47 @@
-# situational_overview_eval.py
-
 import json
 import asyncio
 import os
 import re
 import pandas as pd
 
-# Initialize Django
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "main.settings")
 import django
 django.setup()
 
-# --- Your application's imports ---
 from per.ucl_research.ops_learning_summary4 import DrefSummaryTask, BaseAITask
 from per.dref_temp.dref_utils import dref_manager, DREFFilters
 from per.ucl_research.ifrc_client import IFRCAPIClient
 
-# --- Data Preparation Function ---
 async def get_situational_overview_data(event_id: int):
-    """
-    Prepares the document and summary for evaluating the situational overview task.
-    This function mimics the exact logic used in DrefSituationalOverviewView._process_situational_overview
-    """
     print(f"Fetching data for Situational Overview evaluation for event_id: {event_id}...")
     client = IFRCAPIClient()
     task = DrefSummaryTask()
 
     try:
-        # Step 1: Get event details (same as API)
         event = await client.get_event_detail(event_id)
         if not event:
-            print(f"❌ Event not found for ID: {event_id}")
+            print(f"Event not found for ID: {event_id}")
             await client.close()
             return None, None
         
-        # Step 2: Get field reports (same as API)
         field_reports = event.get("field_reports", [])
         if not field_reports:
-            print(f"❌ Field Reports not found for event: {event.get('name', 'Unknown')}")
+            print(f"Field Reports not found for event: {event.get('name', 'Unknown')}")
             await client.close()
             return None, None
         
-        # Step 3: Extract field report IDs and find linked DREF (same as API)
         field_report_ids = [fr['id'] for fr in field_reports]
         dref_data_list = dref_manager.get_data("basic", DREFFilters(field_report_ids=field_report_ids))
         
         if not dref_data_list:
-            print(f"❌ No DREF found for event: {event.get('name', 'Unknown')}")
+            print(f"No DREF found for event: {event.get('name', 'Unknown')}")
             print(f"   Field reports count: {len(field_reports)}")
             print(f"   Field report IDs: {field_report_ids}")
             await client.close()
             return None, None
         
-        # Step 4: Get latest DREF version (same as API)
         latest_dref_version = dref_manager.get_latest_dref_version(dref_data_list[0])
         
-        # Step 5: Prepare data for LLM generation (exact same as API)
         latest_update_dict = {
             'event_description': (getattr(latest_dref_version, 'event_description', '') or getattr(latest_dref_version, 'description', '') or getattr(latest_dref_version, 'summary', '')),
             'event_scope': (getattr(latest_dref_version, 'event_scope', '') or getattr(latest_dref_version, 'scope_and_scale', '')),
@@ -73,18 +59,16 @@ async def get_situational_overview_data(event_id: int):
             'date_of_approval': getattr(latest_dref_version, 'date_of_approval', None),
         }
 
-        # Step 6: Generate situational overview (same as API)
         summary = task.generate_situational_overview(latest_update_dict)
         
         if not summary:
-            print(f"❌ Failed to generate situational overview for DREF: {latest_dref_version.id}")
+            print(f"Failed to generate situational overview for DREF: {latest_dref_version.id}")
             await client.close()
             return None, None
         
-        # Step 7: Prepare document for evaluation (same structure as API input)
         document = json.dumps(latest_update_dict, indent=2, ensure_ascii=False, default=str)
         
-        print(f"✅ Successfully generated situational overview for event: {event.get('name', 'Unknown')}")
+        print(f"Successfully generated situational overview for event: {event.get('name', 'Unknown')}")
         print(f"   DREF ID: {latest_dref_version.id}")
         print(f"   Country: {latest_update_dict['country_details']['name']}")
         print(f"   Disaster Type: {latest_update_dict['disaster_type_details']['name']}")
@@ -93,11 +77,10 @@ async def get_situational_overview_data(event_id: int):
         return document, summary
         
     except Exception as e:
-        print(f"❌ Error in get_situational_overview_data: {e}")
+        print(f"Error in get_situational_overview_data: {e}")
         await client.close()
         return None, None
 
-# --- Adapted G-Eval Prompts for Situational Overview ---
 RELEVANCY_SCORE_CRITERIA_SITUATIONAL = """
 Relevance (1-5): The summary must accurately describe the disaster situation and the reason for the operation, based on the source JSON.
 - A score of 5 means the summary clearly includes the 'event_description', 'event_scope', and 'operation_objective'.
@@ -134,7 +117,6 @@ Fluency (1-5): The quality of the summary in terms of grammar, spelling, and rea
 """
 FLUENCY_SCORE_STEPS_SITUATIONAL = "Read the summary and evaluate its fluency based on the given criteria. Assign a fluency score from 1 to 5."
 
-# --- G-Eval Functions ---
 EVALUATION_PROMPT_TEMPLATE = (
     "You will be given one summary written for an article. Your task is to rate the summary on the metric: {metric_name}.\n\n"
     "Criteria:\n{criteria}\n\nSteps:\n{steps}\n\n"
@@ -146,7 +128,6 @@ EVALUATION_PROMPT_TEMPLATE = (
 )
 
 def get_geval_score(task_instance: BaseAITask, criteria: str, steps: str, document: str, summary: str, metric_name: str):
-    """Build prompt, call model, and parse a numeric score; return int or None."""
     prompt = EVALUATION_PROMPT_TEMPLATE.format(
         criteria=criteria,
         steps=steps,
@@ -163,7 +144,6 @@ def get_geval_score(task_instance: BaseAITask, criteria: str, steps: str, docume
     if not response:
         return None
     
-    # Safely find the first number in the response string
     match = re.search(r"\d+", response)
     if not match:
         return None
@@ -174,9 +154,8 @@ def get_geval_score(task_instance: BaseAITask, criteria: str, steps: str, docume
     except Exception as e:
         return None
 
-# --- Main Execution Block ---
 async def main():
-    TEST_EVENT_ID = 6955 # Example Event ID
+    TEST_EVENT_ID = 6955 
 
     document, summary = await get_situational_overview_data(TEST_EVENT_ID)
 
@@ -205,7 +184,7 @@ async def main():
         print(df)
         
     else:
-        print("❌ Failed to get document or summary data")
+        print("Failed to get document or summary data")
         print(f"Document: {document}")
         print(f"Summary: {summary}")
 
