@@ -256,12 +256,12 @@ async def main():
     results_dir = os.path.join(os.path.dirname(__file__), "results")
     os.makedirs(results_dir, exist_ok=True)
     
-    filename = os.path.join(results_dir, f"dref_evaluation_results_{timestamp}.csv")
+    filename = os.path.join(results_dir, f"operational_evaluation_results_{timestamp}.csv")
     detailed_df.to_csv(filename, index=False)
     print(f"\nResults saved to: {os.path.abspath(filename)}")
     
     # Save full results (including summaries) to JSON
-    json_filename = os.path.join(results_dir, f"dref_evaluation_full_{timestamp}.json")
+    json_filename = os.path.join(results_dir, f"operational_evaluation_full_{timestamp}.json")
     with open(json_filename, 'w') as f:
         json.dump(results, f, indent=2, default=str)
     print(f"Full results saved to: {os.path.abspath(json_filename)}")
