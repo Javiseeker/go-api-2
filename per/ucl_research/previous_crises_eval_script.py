@@ -19,7 +19,7 @@ from per.ucl_research.rapid_response_parser import RapidResponseCapacityParser
 async def get_previous_crises_data(country_id: int, disaster_type_id: int):
     """
     Matches the API view's processing of previous crises insights,
-    but adapted for local evaluation.
+    but adapted for local evaluation with safe handling of event detail errors.
     """
     print("Fetching data for Previous Crises evaluation...")
     previous_crises_task = PreviousCrisesTask()
@@ -61,7 +61,19 @@ async def get_previous_crises_data(country_id: int, disaster_type_id: int):
         processed_learnings = [previous_crises_task.create_learning_entry(l) for l in combined_learning]
         for pl in processed_learnings:
             ev_id = pl.get("event_id")
-            event = await client.get_event_detail(ev_id) if ev_id else {}
+
+            # Bypass mechanism for failed event lookups
+            event = {}
+            if ev_id:
+                try:
+                    result = await client.get_event_detail(ev_id)
+                    if isinstance(result, dict):
+                        event = result
+                    else:
+                        event = {}
+                except Exception as e:
+                    print(f"⚠ Skipping event {ev_id} due to error: {e}")
+                    event = {}
 
             countries = event.get("countries", []) if isinstance(event.get("countries", []), list) else []
             dtype_obj = event.get("dtype")
@@ -114,13 +126,16 @@ async def get_previous_crises_data(country_id: int, disaster_type_id: int):
     return document, summary_json
 
 # --- G-Eval Setup ---
-RELEVANCY_SCORE_CRITERIA = """
-Relevance(1-5) - selection of important content from the source. \
-The summary should only be based of the information from the source document and the learning ids should match. \
+INSIGHT_RELEVANCY_SCORE_CRITERIA = """
+Relevance(1-5) - selection of important content from the source. 
+The summary should only be based of the information from the source document and the learning ids should match. 
 Annotators were instructed to penalize summaries which contained redundancies and excess information.
+- A score of 5 means all insights in the summary are relevant to the source document. There is no hallucination.
+- A score of 3 means that there is some hallucination but there is some evidence of sources being used.
+- A score of 1 means that none of the insights in the summary are backed up by the source document and there is a lot of hallucination.
 """
 
-RELEVANCY_SCORE_STEPS = """
+INSIGHT_RELEVANCY_SCORE_STEPS = """
 1. Read the summary and the source document carefully.
 2. Compare the summary to the source document and identify the main points of the article.
 3. Assess how well the summary covers the main points of the article, and how much irrelevant or redundant information it contains.
@@ -128,7 +143,10 @@ RELEVANCY_SCORE_STEPS = """
 """
 
 RR_QUESTION_RELEVANCY_SCORE_CRITERIA= """
-RR questions should be relevant to the insight it is based on. \
+RR questions should be relevant to the insight it is based on. 
+- A score of 5 means that all RR questions are relevant to the insight it is based on. 
+- A score of 3 means that some RR questions are not relevant to the insight it is based on. 
+- A score of 1 means that none of the RR questions are relevant to the insight it is based on. 
 """
 
 RR_QUESTION_RELEVANCY_SCORE_STEPS = """
@@ -139,10 +157,12 @@ RR_QUESTION_RELEVANCY_SCORE_STEPS = """
 """
 
 UNIQUENESS_SCORE_CRITERIA = """
-Uniqueness(1-5) - selection of unique content from the source. \
-Each insight should be unique to one another. \
-Every learning id in the source should not be used more than once. \
-Annotators were instructed to penalize summaries which contained repeated information.
+Uniqueness(1-5) - selection of unique content from the source. 
+Each insight should be unique to one another. 
+Every learning id in the source should not be used more than once. 
+- A score of 5 means that all insights generated are unique from one another. 
+- A score of 3 means that some insights are repeated but there is atleast one unique insight.
+- A score of 1 means that are a lot of repeated insights.
 """
 
 UNIQUENESS_SCORE_STEPS = """
@@ -158,24 +178,14 @@ Coherence (1-5): The summary must be well-structured and present information in 
 - A score of 3 means the points are somewhat disorganized or the flow is slightly confusing.
 - A score of 1 means the summary is a jumble of unrelated or poorly structured points.
 """
+
 COHERENCE_SCORE_STEPS = """
 1. Read the summary's bullet points.
 2. Assess if the points are presented in a logical sequence.
-3. Check for clarity and how well each point contributes to the overall answer.
+3. Check for clarity and how well each insight correlates to the title it generates.
 4. Assign a coherence score from 1 to 5.
 """
-CONSISTENCY_SCORE_CRITERIA = """
-Consistency (1-5): The summary must be factually aligned with the source document. All claims, especially references to reports must be traceable to the source and match the learning ids.
-- A score of 5 means all facts and references are identical to the source document.
-- A score of 3 means there is a minor factual discrepancy or a reference is slightly misrepresented.
-- A score of 1 means the summary contains significant factual errors or cites sources not present in the document.
-"""
-CONSISTENCY_SCORE_STEPS = """
-1. Read the summary and the source document side-by-side.
-2. For every claim in the summary, find the supporting evidence in the source document.
-3. Pay close attention to report codes, dates, and numbers.
-4. Assign a consistency score from 1 to 5 based on factual accuracy.
-"""
+
 FLUENCY_SCORE_CRITERIA = """
 Fluency (1-5): The quality of the summary in terms of grammar, spelling, and readability.
 - 5: Good. The summary has few or no grammatical errors and is easy to read. The language is professional and clear.
@@ -206,8 +216,8 @@ def get_geval_score(task_instance: BaseAITask, criteria: str, steps: str, docume
 
 # --- Main Execution ---
 async def main():
-    TEST_COUNTRY_ID = 136
-    TEST_DISASTER_TYPE_ID = 1
+    TEST_COUNTRY_ID = 87
+    TEST_DISASTER_TYPE_ID = 62
 
     document, summary = await get_previous_crises_data(TEST_COUNTRY_ID, TEST_DISASTER_TYPE_ID)
 
@@ -216,9 +226,8 @@ async def main():
         print("\n--- SUMMARY ---\n", summary)
 
         evaluation_metrics = {
-            "Relevance": (RELEVANCY_SCORE_CRITERIA, RELEVANCY_SCORE_STEPS),
+            "Relevance": (INSIGHT_RELEVANCY_SCORE_CRITERIA, INSIGHT_RELEVANCY_SCORE_STEPS),
             "Coherence": (COHERENCE_SCORE_CRITERIA, COHERENCE_SCORE_STEPS),
-            "Consistency": (CONSISTENCY_SCORE_CRITERIA, CONSISTENCY_SCORE_STEPS),
             "Fluency": (FLUENCY_SCORE_CRITERIA, FLUENCY_SCORE_STEPS),
             "RR Question Relevance": (RR_QUESTION_RELEVANCY_SCORE_CRITERIA, RR_QUESTION_RELEVANCY_SCORE_STEPS),
             "Uniqueness": (UNIQUENESS_SCORE_CRITERIA, UNIQUENESS_SCORE_STEPS),
