@@ -160,7 +160,7 @@ async def get_rr_capacity_data(country_id: int, disaster_type_id: int, question_
         await client.close()
 
 RELEVANCY_SCORE_CRITERIA_RR = """
-Relevance (1-5): The summary must directly answer the 'Critical Question' about humanitarian response capacity using only the information provided in the source document.
+Relevance (1-5): The summary must directly answer the 'Critical Question' using only the information provided in the source document.
 - A score of 5 means the summary provides a clear, direct answer to the capacity question, citing specific evidence about response capabilities, resources, or operational readiness from the source text.
 - A score of 3 means the summary attempts to answer the capacity question but is somewhat indirect or misses key evidence about response capabilities from the source.
 - A score of 1 means the summary fails to address the 'Critical Question' about response capacity at all.
@@ -172,11 +172,27 @@ RELEVANCY_SCORE_STEPS_RR = """
 3. Verify that any evidence about response capabilities, resources, or operational readiness mentioned in the summary are present in the source document ('Events Context' or 'Operational Learning Context').
 4. Assign a relevance score from 1 to 5 based on how directly and accurately the summary addresses the capacity question using ONLY the provided sources.
 """
+
+
+UNIQUENESS_SCORE_CRITERIA = """
+Uniqueness (1-5): The summary's points must be distinct and not repeat the same core idea.
+- A score of 5 means each bullet point presents a completely new, distinct finding or piece of evidence.
+- A score of 3 means there is some noticeable overlap in the concepts between two or more bullet points.
+- A score of 1 means multiple bullet points are clearly making the same argument using slightly different words.
+"""
+
+UNIQUENESS_SCORE_STEPS = """
+1. Read all the bullet points in the summary.
+2. For each bullet point, compare its core idea to the core ideas of all other bullet points.
+3. Identify if multiple bullet points are making the same fundamental point (e.g., "lack of coordination" and "poor collaboration").
+4. Assign a score based on how much unique information is presented.
+"""
 COHERENCE_SCORE_CRITERIA = """
 Coherence (1-5): The capacity assessment summary must be well-structured and present information in a logical order that builds a clear picture of response capabilities.
-- A score of 5 means the summary's points about response capacity are logical, well-organized, and easy to follow, creating a coherent assessment of capabilities.
+- A score of 5 means the summary's points about response capacity are logical and well-organized creating a coherent assessment of capabilities.
 - A score of 3 means the capacity points are somewhat disorganized or the flow is slightly confusing, but still understandable.
 - A score of 1 means the summary is a jumble of unrelated or poorly structured points that don't form a clear capacity assessment.
+- NOTE: A high score is also appropriate if the summary correctly concludes that the source document does not contain enough information to assess the specific capacity question.
 """
 COHERENCE_SCORE_STEPS = """
 1. Read the summary's bullet points about response capacity.
@@ -185,7 +201,7 @@ COHERENCE_SCORE_STEPS = """
 4. Assign a coherence score from 1 to 5 based on how well the capacity information flows and connects.
 """
 CONSISTENCY_SCORE_CRITERIA = """
-Consistency (1-5): The capacity assessment summary must be factually aligned with the source document. All claims about response capabilities, especially references to reports (e.g., MDRKE045), must be traceable to the source.
+Consistency (1-5): The capacity assessment summary must be factually aligned with the source document. All claims about response capabilities, especially references to reports must be traceable to the source.
 - A score of 5 means all facts about response capabilities and references are identical to the source document.
 - A score of 3 means there is a minor factual discrepancy about capabilities or a reference is slightly misrepresented.
 - A score of 1 means the summary contains significant factual errors about response capabilities or cites sources not present in the document.
@@ -260,6 +276,7 @@ async def evaluate_single_combination(country_id: int, disaster_type_id: int) ->
                 "Coherence": (COHERENCE_SCORE_CRITERIA, COHERENCE_SCORE_STEPS),
                 "Consistency": (CONSISTENCY_SCORE_CRITERIA, CONSISTENCY_SCORE_STEPS),
                 "Fluency": (FLUENCY_SCORE_CRITERIA, FLUENCY_SCORE_STEPS),
+                "Uniqueness": (UNIQUENESS_SCORE_CRITERIA, UNIQUENESS_SCORE_STEPS),
             }
 
             question_scores = {}
@@ -306,35 +323,38 @@ def create_summary_dataframe(results: List[Dict]) -> pd.DataFrame:
     if not results:
         return pd.DataFrame()
     
-    # Create detailed results DataFrame
-    detailed_data = []
-    for result in results:
-        row = {
-            "Country ID": result["country_id"],
-            "Disaster Type ID": result["disaster_type_id"],
-            "Question Index": result["question_index"],
-            "Critical Question": result["critical_question"][:100] + "..." if len(result["critical_question"]) > 100 else result["critical_question"]
-        }
-        row.update(result["scores"])
-        detailed_data.append(row)
-    
-    detailed_df = pd.DataFrame(detailed_data)
-    
-    # Create summary statistics DataFrame
+    # Create summary statistics DataFrame - only country/disaster combinations with average scores
     if len(results) > 1:
+        # Group by combination and calculate averages for all five metrics
+        detailed_df = pd.DataFrame([
+            {
+                "Country ID": result["country_id"],
+                "Disaster Type ID": result["disaster_type_id"],
+                "Question Index": result["question_index"],
+                "Relevance": result["scores"]["Relevance"],
+                "Coherence": result["scores"]["Coherence"],
+                "Consistency": result["scores"]["Consistency"],
+                "Fluency": result["scores"]["Fluency"],
+                "Uniqueness": result["scores"]["Uniqueness"]
+            }
+            for result in results
+        ])
+        
         # Group by combination and calculate averages
-        combination_stats = detailed_df.groupby(['Country ID', 'Disaster Type ID'])[['Relevance', 'Coherence', 'Consistency', 'Fluency']].mean().round(2)
+        combination_stats = detailed_df.groupby(['Country ID', 'Disaster Type ID'])[['Relevance', 'Coherence', 'Consistency', 'Fluency', 'Uniqueness']].mean().round(2)
         
         # Overall averages across all combinations and questions
-        overall_stats = detailed_df[['Relevance', 'Coherence', 'Consistency', 'Fluency']].mean().round(2)
+        overall_stats = detailed_df[['Relevance', 'Coherence', 'Consistency', 'Fluency', 'Uniqueness']].mean().round(2)
         
         print("\n=== COMBINATION AVERAGES ===")
         print(combination_stats)
         
         print("\n=== OVERALL AVERAGES ===")
         print(overall_stats)
+        
+        return combination_stats.reset_index()
     
-    return detailed_df
+    return pd.DataFrame()
 
 async def main():
     """Main function to run the evaluation"""
@@ -354,34 +374,37 @@ async def main():
         print("No combinations were successfully evaluated!")
         return
     
-    # Create and display results
-    detailed_df = create_summary_dataframe(results)
+    # Create and display results - only summary with averages
+    summary_df = create_summary_dataframe(results)
     
-    print("\n=== DETAILED RESULTS ===")
-    print(detailed_df)
-    
-    # Save results to file
-    timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"rr_capacity_evaluation_results_{timestamp}.csv"
-    detailed_df.to_csv(filename, index=False)
-    print(f"\nResults saved to: {filename}")
-    
-    # Save full results (including summaries) to JSON
-    json_filename = f"rr_capacity_evaluation_full_{timestamp}.json"
-    with open(json_filename, 'w') as f:
-        json.dump(results, f, indent=2, default=str)
-    print(f"Full results saved to: {json_filename}")
-    
-    # Print summary statistics
-    total_combinations = len(COUNTRY_DISASTER_COMBINATIONS)
-    successful_combinations = len(set((r["country_id"], r["disaster_type_id"]) for r in results))
-    total_questions = len(set((r["country_id"], r["disaster_type_id"], r["question_index"]) for r in results))
-    
-    print(f"\n=== EVALUATION SUMMARY ===")
-    print(f"Total Combinations: {total_combinations}")
-    print(f"Successfully Evaluated: {successful_combinations}")
-    print(f"Total Questions Evaluated: {total_questions}")
-    print(f"Success Rate: {(successful_combinations/total_combinations)*100:.1f}%")
+    if not summary_df.empty:
+        print("\n=== SUMMARY RESULTS (Country/Disaster Averages) ===")
+        print(summary_df)
+        
+        # Save summary results to file
+        timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"rr_capacity_evaluation_results_{timestamp}.csv"
+        summary_df.to_csv(filename, index=False)
+        print(f"\nSummary results saved to: {filename}")
+        
+        # Save full results (including summaries) to JSON for reference
+        json_filename = f"rr_capacity_evaluation_full_{timestamp}.json"
+        with open(json_filename, 'w') as f:
+            json.dump(results, f, indent=2, default=str)
+        print(f"Full results saved to: {json_filename}")
+        
+        # Print summary statistics
+        total_combinations = len(COUNTRY_DISASTER_COMBINATIONS)
+        successful_combinations = len(set((r["country_id"], r["disaster_type_id"]) for r in results))
+        total_questions = len(set((r["country_id"], r["disaster_type_id"], r["question_index"]) for r in results))
+        
+        print(f"\n=== EVALUATION SUMMARY ===")
+        print(f"Total Combinations: {total_combinations}")
+        print(f"Successfully Evaluated: {successful_combinations}")
+        print(f"Total Questions Evaluated: {total_questions}")
+        print(f"Success Rate: {(successful_combinations/total_combinations)*100:.1f}%")
+    else:
+        print("No summary results to display or save.")
 
 if __name__ == "__main__":
     # Run the evaluation
