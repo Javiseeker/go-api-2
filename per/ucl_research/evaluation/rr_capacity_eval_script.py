@@ -173,12 +173,12 @@ RELEVANCY_SCORE_STEPS_RR = """
 4. Assign a relevance score from 1 to 5 based on how directly and accurately the summary addresses the capacity question using ONLY the provided sources.
 """
 
-
 UNIQUENESS_SCORE_CRITERIA = """
-Uniqueness (1-5): The summary's points must be distinct and not repeat the same core idea.
-- A score of 5 means each bullet point presents a completely new, distinct finding or piece of evidence.
-- A score of 3 means there is some noticeable overlap in the concepts between two or more bullet points.
-- A score of 1 means multiple bullet points are clearly making the same argument using slightly different words.
+Uniqueness (1-5): The summary's points must be distinct and not repeat the same core idea, both within the summary and across other capacity questions.
+- A score of 5 means each bullet point presents a completely new, distinct finding that hasn't been mentioned in other capacity areas.
+- A score of 3 means there is some overlap within the summary or with other capacity questions, but most points are unique.
+- A score of 1 means multiple bullet points repeat the same argument or the same insights appear across multiple capacity areas.
+- NOTE: A high score is also appropriate if the summary correctly concludes that the source document does not contain enough information to assess the specific capacity question.
 """
 
 UNIQUENESS_SCORE_STEPS = """
@@ -189,7 +189,7 @@ UNIQUENESS_SCORE_STEPS = """
 """
 
 INSIGHTFULNESS_SCORE_CRITERIA = """
-Insightfulness (1–5): The capacity assessment summary must highlight findings that are meaningful, analytical, and useful for humanitarian response planning.
+Insightfulness (1-5): The capacity assessment summary must highlight findings that are meaningful, analytical, and useful for humanitarian response planning.
 - A score of 5 means the summary provides sharp, decision-relevant insights — it emphasizes the most important strengths, critical gaps, or operational risks, not just surface-level details.
 - A score of 3 means the summary includes some useful observations but also highlights minor, obvious, or less impactful points without strong analysis.
 - A score of 1 means the summary mostly repeats trivial facts or weak findings, adding little value for understanding response capacity.
