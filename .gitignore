@@ -51,3 +51,5 @@ country-key-documents/
 celerybeat-schedule
 .venv
 .DS_Store
+
+per/ucl_research/evaluation/results/*

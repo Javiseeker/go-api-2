@@ -1,0 +1,494 @@
+import json
+import asyncio
+import os
+import re
+import pandas as pd
+from typing import List, Dict, Tuple, Optional
+
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "main.settings")
+import django
+django.setup()
+
+from per.ucl_research.ops_learning_summary4 import RRCapacityTask, BaseAITask
+from per.ucl_research.rapid_response_parser import RapidResponseCapacityParser
+from per.ucl_research.ifrc_client import IFRCAPIClient
+
+# Each tuple contains (country_id, disaster_type_id)
+COUNTRY_DISASTER_COMBINATIONS = [
+    (136, 1),
+]
+
+async def get_rr_capacity_data(country_id: int, disaster_type_id: int, question_index: int = 0):
+    parser = RapidResponseCapacityParser()
+    all_questions = parser._load_questions_data()
+    if not all_questions or question_index >= len(all_questions):
+        return None, None, None
+    question_data = all_questions[question_index]
+    
+    client = IFRCAPIClient()
+    
+    try:
+        print(f"Fetching RR capacity data for country {country_id}, disaster type {disaster_type_id}")
+        
+        primary_batch = await client.get_ops_learning(
+            country_id=country_id,
+            disaster_type_id=disaster_type_id,
+            max_results=20
+        )
+        
+        primary_labeled = [
+            {**l, "source_note": "This insight was built off similar disasters from the same country."}
+            for l in primary_batch
+        ]
+        
+        seen_appeal_codes = set()
+        deduplicated_results = []
+        
+        for learning in primary_labeled:
+            appeal_info = learning.get('appeal', {})
+            if isinstance(appeal_info, dict):
+                appeal_code = appeal_info.get('code')
+            else:
+                appeal_code = str(appeal_info) if appeal_info else None
+            
+            if appeal_code and appeal_code not in seen_appeal_codes:
+                seen_appeal_codes.add(appeal_code)
+                deduplicated_results.append(learning)
+            elif not appeal_code:
+                deduplicated_results.append(learning)
+        
+        target_count = 20
+        if len(deduplicated_results) < target_count:
+            remaining_needed = target_count - len(deduplicated_results)
+            secondary_batch = await client.get_ops_learning(
+                country_id=country_id,
+                disaster_type_id=None,
+                max_results=remaining_needed
+            )
+            
+            secondary_labeled = [
+                {**l, "source_note": "This insight was built off other disasters from the same country."}
+                for l in secondary_batch
+            ]
+            
+            for learning in secondary_labeled:
+                if len(deduplicated_results) >= target_count:
+                    break
+                    
+                appeal_info = learning.get('appeal', {})
+                if isinstance(appeal_info, dict):
+                    appeal_code = appeal_info.get('code')
+                else:
+                    appeal_code = str(appeal_info) if appeal_info else None
+                
+                if appeal_code and appeal_code not in seen_appeal_codes:
+                    seen_appeal_codes.add(appeal_code)
+                    deduplicated_results.append(learning)
+                elif not appeal_code and len(deduplicated_results) < target_count:
+                    deduplicated_results.append(learning)
+        
+        ops_learning_data = deduplicated_results[:target_count]
+        print(f"Fetched {len(ops_learning_data)} deduplicated ops learning entries")
+        
+        events = []
+        seen_event_ids = set()
+        
+        for learning in ops_learning_data:
+            if not isinstance(learning, dict):
+                continue
+                
+            appeal_info = learning.get('appeal', {})
+            if not isinstance(appeal_info, dict):
+                continue
+                
+            event_details = appeal_info.get('event_details', {})
+            if not isinstance(event_details, dict):
+                continue
+                
+            event_id = event_details.get('id')
+            appeal_code = appeal_info.get('code')
+            
+            if not event_id or event_id in seen_event_ids:
+                continue
+                
+            seen_event_ids.add(event_id)
+            
+            try:
+                event = await client.get_event_detail(event_id)
+                
+                if event:
+                    event["source_note"] = f"Event from ops learning (Appeal: {appeal_code}, Event ID: {event_id})"
+                    event["appeal_source"] = appeal_code
+                    event["event_source_id"] = event_id
+                    events.append(event)
+                    
+            except Exception:
+                continue
+        
+        event_data = events[:5]
+        print(f"Fetched {len(event_data)} events with source tracking")
+
+        task = RRCapacityTask()
+        summary = task.generate_response_notes(question_data, event_data, ops_learning_data)
+        
+        events_context = task._format_events_for_assessment(event_data or [])
+        learning_context = task._format_ops_learning_for_assessment(ops_learning_data or [])
+        
+        document = (
+            f"Assessment Area: {question_data.get('Area') or 'No area specified'}\n\n"
+            f"Events Context:\n{events_context}\n\n"
+            f"Operational Learning Context:\n{learning_context}\n\n"
+            f"Guiding/Probing Questions:\n{question_data.get('Guiding/probing questions') or ''}\n\n"
+            f"Examples:\n{question_data.get('Examples of recommended actions') or ''}\n"
+        )
+        
+        print(f"Successfully prepared RR capacity data for question: {question_data.get('Critical Questions', 'Unknown')}")
+        print(f"   Ops Learning Entries: {len(ops_learning_data)}")
+        print(f"   Events: {len(event_data)}")
+        print(f"   Summary Length: {len(summary) if summary else 0} characters")
+        
+        return document, summary, question_data
+        
+    except Exception as e:
+        print(f"Error in get_rr_capacity_data: {e}")
+        return None, None, None
+    finally:
+        await client.close()
+
+RELEVANCY_SCORE_CRITERIA_RR = """
+Relevance (1-5): The summary must directly answer the 'Critical Question' using only the information provided in the source document.
+- A score of 5 means the summary provides a clear, direct answer to the capacity question, citing specific evidence about response capabilities, resources, or operational readiness from the source text, OR correctly concludes that the source document does not contain enough information to assess the specific capacity question.
+- A score of 3 means the summary attempts to answer the capacity question but is somewhat indirect or misses key evidence about response capabilities from the source.
+- A score of 1 means the summary fails to address the 'Critical Question' about response capacity at all.
+"""
+
+RELEVANCY_SCORE_STEPS_RR = """
+1. First, identify the 'Critical Question' being asked about humanitarian response capacity.
+2. Read the summary and assess how well it answers that specific capacity question.
+3. Verify that any evidence about response capabilities, resources, or operational readiness mentioned in the summary are present in the source document ('Events Context' or 'Operational Learning Context').
+4. Assign a relevance score from 1 to 5 based on how directly and accurately the summary addresses the capacity question using ONLY the provided sources.
+"""
+
+UNIQUENESS_SCORE_CRITERIA = """
+Uniqueness (1-5): The summary's points must be distinct and not repeat the same core idea, both within the summary and across other capacity questions.
+- A score of 5 means each bullet point presents a completely new, distinct finding that hasn't been mentioned in other capacity areas.
+- A score of 3 means there is some overlap within the summary or with other capacity questions, but most points are unique.
+- A score of 1 means multiple bullet points repeat the same argument, the same insights appear across multiple capacity areas, OR multiple questions use identical "insufficient information" responses without differentiation.
+"""
+
+UNIQUENESS_SCORE_STEPS = """
+1. Read all the bullet points in the summary.
+2. For each bullet point, compare its core idea to the core ideas of all other bullet points.
+3. Identify if multiple bullet points are making the same fundamental point (e.g., "lack of coordination" and "poor collaboration").
+5. Assign a score based on how much unique information is presented and how well insufficient information conclusions are differentiated.
+"""
+
+INSIGHTFULNESS_SCORE_CRITERIA = """
+Insightfulness (1-5): The capacity assessment summary must highlight findings that are meaningful, analytical, and useful for humanitarian response planning.
+- A score of 5 means the summary provides sharp, decision-relevant insights — it emphasizes the most important strengths, critical gaps, or operational risks, not just surface-level details, OR correctly concludes that the source document does not contain enough information to provide deeper analytical insights.
+- A score of 3 means the summary includes some useful observations but also highlights minor, obvious, or less impactful points without strong analysis.
+- A score of 1 means the summary mostly repeats trivial facts or weak findings, adding little value for understanding response capacity.
+"""
+
+INSIGHTFULNESS_SCORE_STEPS = """
+Read the summary and identify the findings presented.
+Assess whether each finding provides analytical value (e.g., does it highlight a critical enabler, bottleneck, gap, or actionable lesson for humanitarian response?).
+Check if the summary avoids overemphasizing trivial, repetitive, or obvious details (e.g., repeating staff numbers without added analysis).
+Determine whether the findings help responders gain a deeper understanding of operational capacity.
+Assign an insightfulness score from 1 to 5 based on the depth and usefulness of the insights provided.
+"""
+
+COHERENCE_SCORE_CRITERIA = """
+Coherence (1-5): The capacity assessment summary must be well-structured and present information in a logical order that builds a clear picture of response capabilities.
+- A score of 5 means the summary's points about response capacity are logical and well-organized creating a coherent assessment of capabilities OR if the summary correctly concludes that the source document does not contain enough information to assess the specific capacity question.
+- A score of 3 means the capacity points are somewhat disorganized or the flow is slightly confusing, but still understandable.
+- A score of 1 means the summary is a jumble of unrelated or poorly structured points that don't form a clear capacity assessment.
+"""
+
+COHERENCE_SCORE_STEPS = """
+1. Read the summary's bullet points about response capacity.
+2. Assess if the points are presented in a logical sequence.
+3. Check for clarity and how well each point contributes to the overall capacity assessment.
+4. Assign a coherence score from 1 to 5 based on how well the capacity information flows and connects.
+"""
+
+CONSISTENCY_SCORE_CRITERIA = """
+Consistency (1-5): The capacity assessment summary must be factually aligned with the source document. All claims about response capabilities, especially references to reports must be traceable to the source.
+- A score of 5 means all facts about response capabilities and references are identical to the source document, OR correctly concludes that the source document does not contain enough information to assess the specific capacity question.
+- A score of 3 means there is a minor factual discrepancy about capabilities or a reference is slightly misrepresented.
+- A score of 1 means the summary contains significant factual errors about response capabilities or cites sources not present in the document.
+"""
+
+CONSISTENCY_SCORE_STEPS = """
+1. Read the capacity assessment summary and the source document side-by-side.
+2. For every claim about response capabilities in the summary, find the supporting evidence in the source document.
+3. Pay close attention to report codes, dates, numbers, and specific details about response resources and readiness.
+4. Assign a consistency score from 1 to 5 based on factual accuracy of the capacity assessment.
+"""
+
+FLUENCY_SCORE_CRITERIA = """
+Fluency (1-5): The quality of the capacity assessment summary in terms of grammar, spelling, and readability for humanitarian responders.
+- 5: Excellent. The summary has few or no grammatical errors and is easy to read. The language is professional and clear.
+- 3: Good. The summary has some errors that affect clarity but is still understandable for responders.
+- 1: Poor. The summary has many errors that make it hard to understand, which could impact response planning decisions.
+"""
+FLUENCY_SCORE_STEPS = "Read the capacity assessment summary and evaluate its fluency based on the given criteria. Consider whether humanitarian responders could easily understand and act on this information. Assign a fluency score from 1 to 5."
+
+EVALUATION_PROMPT_TEMPLATE = (
+    "You will be given one summary written for an article. Your task is to rate the summary on the metric: {metric_name}.\n\n"
+    "Criteria:\n{criteria}\n\nSteps:\n{steps}\n\n"
+    "STRICT OUTPUT REQUIREMENT:\n"
+    "- Return ONLY a single integer on its own line.\n"
+    "- Do NOT include any extra words, symbols, or explanation.\n\n"
+    "Source Document:\n{document}\n\n"
+    "Summary to evaluate:\n{summary}\n"
+)
+
+def get_geval_score(task_instance: BaseAITask, criteria: str, steps: str, document: str, summary: str, metric_name: str):
+    prompt = EVALUATION_PROMPT_TEMPLATE.format(
+        criteria=criteria,
+        steps=steps,
+        metric_name=metric_name,
+        document=document,
+        summary=summary,
+    )
+    response = task_instance.get_azure_response(messages=[{"role": "user", "content": prompt}], cache_prefix=f"geval_{metric_name}")
+    if not response: return None
+    match = re.search(r"\d+", response)
+    if not match: return None
+    try: return int(match.group(0))
+    except Exception: return None
+
+async def evaluate_single_combination(country_id: int, disaster_type_id: int) -> Optional[List[Dict]]:
+    """Evaluate a single country/disaster type combination and return results for all questions"""
+    print(f"\n--- Processing Country {country_id}, Disaster Type {disaster_type_id} ---")
+    print(f"Country ID: {country_id}, Disaster Type ID: {disaster_type_id}")
+    
+    parser = RapidResponseCapacityParser()
+    all_questions = parser._load_questions_data()
+    print(f"Found {len(all_questions)} questions to evaluate for this combination.")
+    
+    # Define per-question evaluation metrics (excluding Uniqueness)
+    per_question_metrics = {
+        "Relevance": (RELEVANCY_SCORE_CRITERIA_RR, RELEVANCY_SCORE_STEPS_RR),
+        "Coherence": (COHERENCE_SCORE_CRITERIA, COHERENCE_SCORE_STEPS),
+        "Consistency": (CONSISTENCY_SCORE_CRITERIA, CONSISTENCY_SCORE_STEPS),
+        "Fluency": (FLUENCY_SCORE_CRITERIA, FLUENCY_SCORE_STEPS),
+        "Insightfulness": (INSIGHTFULNESS_SCORE_CRITERIA, INSIGHTFULNESS_SCORE_STEPS),
+    }
+    
+    all_scores = []
+    task_instance = BaseAITask()
+    
+    # First, generate all insights for all questions
+    print(f"\n  --- Generating Insights for All Questions ---")
+    all_insights = []
+    all_documents = []
+    
+    for i, question in enumerate(all_questions):
+        print(f"    Generating insight for Question {i+1}/{len(all_questions)}...")
+        try:
+            document, summary, question_data = await get_rr_capacity_data(country_id, disaster_type_id, question_index=i)
+            if document and summary and question_data:
+                all_insights.append({
+                    "question_index": i,
+                    "critical_question": question_data.get('Critical Questions', 'Unknown'),
+                    "summary": summary,
+                    "question_data": question_data
+                })
+                all_documents.append(document)
+        except Exception as e:
+            print(f"    Error generating insight for question {i+1}: {e}")
+            continue
+    
+    if not all_insights:
+        print(f"  No insights generated for any questions. Skipping combination.")
+        return None
+    
+    print(f"  Successfully generated {len(all_insights)} insights.")
+    
+    # Now evaluate each question individually for per-question metrics
+    print(f"\n  --- Evaluating Individual Questions ---")
+    for i, insight_data in enumerate(all_insights):
+        print(f"\n    --- Evaluating Question {i+1}/{len(all_insights)} ---")
+        print(f"    Question: {insight_data['critical_question'][:100]}...")
+        
+        critical_question = insight_data['critical_question']
+        summary = insight_data['summary']
+        document = all_documents[i]
+        
+        full_document_for_eval = f"Critical Question to Answer:\n{critical_question}\n\n---\n\n{document}"
+        
+        question_scores = {}
+        for eval_type, (criteria, steps) in per_question_metrics.items():
+            score = get_geval_score(task_instance, criteria, steps, full_document_for_eval, summary, eval_type)
+            score_num = score if isinstance(score, int) else 0
+            question_scores[eval_type] = score_num
+            print(f"      {eval_type}: {score_num}/5")
+        
+        all_scores.append({
+            "country_id": country_id,
+            "disaster_type_id": disaster_type_id,
+            "question_index": insight_data['question_index'],
+            "critical_question": critical_question,
+            "scores": question_scores,
+            "summary": summary
+        })
+    
+    # Now evaluate Uniqueness across the entire document
+    print(f"\n  --- Evaluating Overall Document Uniqueness ---")
+    
+    # Combine all insights into one document for uniqueness evaluation
+    complete_document_text = "\n\n".join([
+        f"Question {i+1}: {insight['critical_question']}\n{insight['summary']}"
+        for i, insight in enumerate(all_insights)
+    ])
+    
+    # Evaluate uniqueness on the complete document 
+    uniqueness_score = get_geval_score(
+        task_instance, 
+        UNIQUENESS_SCORE_CRITERIA, 
+        UNIQUENESS_SCORE_STEPS, 
+        "",
+        complete_document_text, 
+        "Uniqueness"
+    )
+    
+    uniqueness_score_num = uniqueness_score if isinstance(uniqueness_score, int) else 0
+    print(f"    Overall Document Uniqueness: {uniqueness_score_num}/5")
+    
+    # Add uniqueness score to all results
+    for result in all_scores:
+        result["scores"]["Uniqueness"] = uniqueness_score_num
+    
+    if all_scores:
+        # Calculate average excluding uniqueness (since it's now the same for all questions)
+        per_question_avg = sum(
+            sum(qs[metric] for metric in per_question_metrics.keys()) 
+            for qs in [score["scores"] for score in all_scores]
+        ) / (len(all_scores) * len(per_question_metrics))
+        
+        print(f"\n  Combination average score (per-question metrics): {per_question_avg:.2f}")
+        print(f"  Overall document uniqueness: {uniqueness_score_num}/5")
+    
+    return all_scores
+
+async def evaluate_multiple_combinations(combinations: List[Tuple[int, int]]) -> List[Dict]:
+    """Evaluate multiple country/disaster type combinations and return all results"""
+    print(f"Starting evaluation of {len(combinations)} country/disaster type combinations...")
+    
+    all_results = []
+    for i, (country_id, disaster_type_id) in enumerate(combinations, 1):
+        print(f"\nProgress: {i}/{len(combinations)}")
+        results = await evaluate_single_combination(country_id, disaster_type_id)
+        if results:
+            all_results.extend(results)
+    
+    return all_results
+
+def create_summary_dataframe(results: List[Dict]) -> pd.DataFrame:
+    """Create a summary DataFrame from all evaluation results"""
+    if not results:
+        return pd.DataFrame()
+    
+    # Create summary statistics DataFrame - only country/disaster combinations with average scores
+    if len(results) > 1:
+        # Group by combination and calculate averages for all six metrics
+        detailed_df = pd.DataFrame([
+            {
+                "Country ID": result["country_id"],
+                "Disaster Type ID": result["disaster_type_id"],
+                "Question Index": result["question_index"],
+                "Relevance": result["scores"]["Relevance"],
+                "Coherence": result["scores"]["Coherence"],
+                "Consistency": result["scores"]["Consistency"],
+                "Fluency": result["scores"]["Fluency"],
+                "Uniqueness": result["scores"]["Uniqueness"],
+                "Insightfulness": result["scores"]["Insightfulness"]
+            }
+            for result in results
+        ])
+        
+        # Group by combination and calculate averages for the specified metrics
+        combination_stats = detailed_df.groupby(['Country ID', 'Disaster Type ID'])[
+            ['Relevance', 'Coherence', 'Consistency', 'Fluency', 'Uniqueness', 'Insightfulness']
+        ].mean().round(2)
+        
+        # Overall averages across all combinations and questions
+        overall_stats = detailed_df[['Relevance', 'Coherence', 'Consistency', 'Fluency', 'Uniqueness', 'Insightfulness']].mean().round(2)
+        
+        print("\n=== COMBINATION AVERAGES ===")
+        print(combination_stats)
+        
+        print("\n=== OVERALL AVERAGES ===")
+        print(overall_stats)
+        
+        return combination_stats.reset_index()
+    
+    return pd.DataFrame()
+
+async def main():
+    """Main function to run the evaluation"""
+    if not COUNTRY_DISASTER_COMBINATIONS:
+        print("No country/disaster type combinations specified in COUNTRY_DISASTER_COMBINATIONS list!")
+        print("Please add combinations to the COUNTRY_DISASTER_COMBINATIONS list at the top of the script.")
+        return
+    
+    print(f"Evaluating {len(COUNTRY_DISASTER_COMBINATIONS)} country/disaster type combinations for RR Capacity...")
+    print("\n=== EVALUATION APPROACH ===")
+    print("Per-Question Metrics: Relevance, Coherence, Consistency, Fluency, Insightfulness")
+    print("Document-Level Metric: Uniqueness (evaluated across all questions)")
+    print("=" * 60)
+    
+    for country_id, disaster_type_id in COUNTRY_DISASTER_COMBINATIONS:
+        print(f"  - Country {country_id}, Disaster Type {disaster_type_id}")
+    
+    # Evaluate all combinations
+    results = await evaluate_multiple_combinations(COUNTRY_DISASTER_COMBINATIONS)
+    
+    if not results:
+        print("No combinations were successfully evaluated!")
+        return
+    
+    # Create and display results - only summary with averages
+    summary_df = create_summary_dataframe(results)
+    
+    if not summary_df.empty:
+        print("\n=== SUMMARY RESULTS (Country/Disaster Averages) ===")
+        print(summary_df)
+        
+        # Create results directory if it doesn't exist
+        results_dir = os.path.join(os.path.dirname(__file__), "results")
+        os.makedirs(results_dir, exist_ok=True)
+        
+        # Save summary results to file
+        timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
+        filename = os.path.join(results_dir, f"rr_capacity_evaluation_results_{timestamp}.csv")
+        summary_df.to_csv(filename, index=False)
+        print(f"\nSummary results saved to: {filename}")
+        
+        # Save full results (including summaries) to JSON for reference
+        json_filename = os.path.join(results_dir, f"rr_capacity_evaluation_full_{timestamp}.json")
+        with open(json_filename, 'w') as f:
+            json.dump(results, f, indent=2, default=str)
+        print(f"Full results saved to: {json_filename}")
+        
+        # Print summary statistics
+        total_combinations = len(COUNTRY_DISASTER_COMBINATIONS)
+        successful_combinations = len(set((r["country_id"], r["disaster_type_id"]) for r in results))
+        total_questions = len(set((r["country_id"], r["disaster_type_id"], r["question_index"]) for r in results))
+        
+        print(f"\n=== EVALUATION SUMMARY ===")
+        print(f"Total Combinations: {total_combinations}")
+        print(f"Successfully Evaluated: {successful_combinations}")
+        print(f"Total Questions Evaluated: {total_questions}")
+        print(f"Success Rate: {(successful_combinations/total_combinations)*100:.1f}%")
+        print(f"\n=== EVALUATION APPROACH ===")
+        print("Uniqueness is now evaluated on the complete document across all questions")
+        print("This provides a holistic assessment of content uniqueness across all capacity areas")
+    else:
+        print("No summary results to display or save.")
+
+if __name__ == "__main__":
+    # Run the evaluation
+    asyncio.run(main())
