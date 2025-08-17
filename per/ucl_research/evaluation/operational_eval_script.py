@@ -18,11 +18,21 @@ from per.ucl_research.ifrc_client import IFRCAPIClient
 
 # Configuration: Add your event IDs here
 EVENT_IDS_TO_EVALUATE = [
-    6950,  # Example ID - replace with your actual IDs
-    # Add more event IDs here as needed
-    # 6951,
-    # 6952,
-    # 6953,
+    6952,
+    6955,
+    6950,
+    6900,
+    6749,
+    6859,
+    7261,
+    7107,
+    7167,
+    7146,
+    7020,
+    6962,
+    6849,
+    6750,
+    6749,
 ]
 
 async def get_evaluation_data(event_id: int):

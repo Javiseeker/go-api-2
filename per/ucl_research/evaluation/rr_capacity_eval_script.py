@@ -16,10 +16,21 @@ from per.ucl_research.ifrc_client import IFRCAPIClient
 # Configuration: Add your country/disaster type combinations here
 # Each tuple contains (country_id, disaster_type_id)
 COUNTRY_DISASTER_COMBINATIONS = [
-    (123, 2),  # Replace with your actual combinations
-    # Add more combinations here as needed
-    # (124, 3),
-    # (125, 1),
+    (93, 12),
+    (123, 2),
+    (4, 15),
+    (47, 12),
+    (61, 12),
+    (70, 21),
+    (77, 15),
+    (80, 6),
+    (81, 20),
+    (87, 62),
+    (101, 7),
+    (136, 1),
+    (176, 5),
+    (84, 12),
+    (157, 5),
 ]
 
 async def get_rr_capacity_data(country_id: int, disaster_type_id: int, question_index: int = 0):

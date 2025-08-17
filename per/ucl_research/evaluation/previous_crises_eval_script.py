@@ -19,10 +19,21 @@ from per.ucl_research.rapid_response_parser import RapidResponseCapacityParser
 # Configuration: Add your country/disaster type combinations here
 # Each tuple contains (country_id, disaster_type_id)
 COUNTRY_DISASTER_COMBINATIONS = [
-    (87, 62),  # Example: Country 87, Disaster Type 62 - replace with your actual combinations
-    # Add more combinations here as needed
-    # (88, 63),
-    # (89, 64),
+    (93, 12),
+    (123, 2),
+    (4, 15),
+    (47, 12),
+    (61, 12),
+    (70, 21),
+    (77, 15),
+    (80, 6),
+    (81, 20),
+    (87, 62),
+    (101, 7),
+    (136, 1),
+    (176, 5),
+    (84, 12),
+    (157, 5),
 ]
 
 # --- Data Preparation Function ---
