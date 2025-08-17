@@ -292,35 +292,37 @@ def create_summary_dataframe(results: List[Dict]) -> pd.DataFrame:
     if not results:
         return pd.DataFrame()
     
-    # Create detailed results DataFrame
-    detailed_data = []
-    for result in results:
-        row = {
-            "Event ID": result["event_id"],
-            "Sector": result["sector"],
-            "Needs Count": result["needs_count"],
-            "Interventions Count": result["interventions_count"]
-        }
-        row.update(result["scores"])
-        detailed_data.append(row)
-    
-    detailed_df = pd.DataFrame(detailed_data)
-    
-    # Create summary statistics DataFrame
+    # Create summary DataFrame with only event ID and average scores
     if len(results) > 1:
-        # Group by sector and calculate averages
-        sector_stats = detailed_df.groupby('Sector')[['Relevance', 'Coherence', 'Consistency', 'Fluency']].mean().round(2)
+        # Create detailed results DataFrame first for calculations
+        detailed_data = []
+        for result in results:
+            row = {
+                "Event ID": result["event_id"],
+                "Relevance": result["scores"]["Relevance"],
+                "Coherence": result["scores"]["Coherence"],
+                "Consistency": result["scores"]["Consistency"],
+                "Fluency": result["scores"]["Fluency"]
+            }
+            detailed_data.append(row)
         
-        # Overall averages across all sectors
+        detailed_df = pd.DataFrame(detailed_data)
+        
+        # Group by event ID and calculate averages for the four metrics
+        event_stats = detailed_df.groupby('Event ID')[['Relevance', 'Coherence', 'Consistency', 'Fluency']].mean().round(2)
+        
+        # Overall averages across all events
         overall_stats = detailed_df[['Relevance', 'Coherence', 'Consistency', 'Fluency']].mean().round(2)
         
-        print("\n=== SECTOR AVERAGES ===")
-        print(sector_stats)
+        print("\n=== EVENT AVERAGES ===")
+        print(event_stats)
         
         print("\n=== OVERALL AVERAGES ===")
         print(overall_stats)
+        
+        return event_stats.reset_index()
     
-    return detailed_df
+    return pd.DataFrame()
 
 async def main():
     """Main function to run the evaluation"""
@@ -339,26 +341,29 @@ async def main():
         print("No events were successfully evaluated!")
         return
     
-    # Create and display results
-    detailed_df = create_summary_dataframe(results)
+    # Create and display results - only summary with event averages
+    summary_df = create_summary_dataframe(results)
     
-    print("\n=== DETAILED RESULTS ===")
-    print(detailed_df)
-    
-    # Save results to file
-    timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
-    results_dir = os.path.join(os.path.dirname(__file__), "results")
-    os.makedirs(results_dir, exist_ok=True)
-    
-    filename = os.path.join(results_dir, f"sector_summary_evaluation_results_{timestamp}.csv")
-    detailed_df.to_csv(filename, index=False)
-    print(f"\nResults saved to: {os.path.abspath(filename)}")
-    
-    # Save full results (including summaries) to JSON
-    json_filename = os.path.join(results_dir, f"sector_summary_evaluation_full_{timestamp}.json")
-    with open(json_filename, 'w') as f:
-        json.dump(results, f, indent=2, default=str)
-    print(f"Full results saved to: {os.path.abspath(json_filename)}")
+    if not summary_df.empty:
+        print("\n=== SUMMARY RESULTS (Event Averages) ===")
+        print(summary_df)
+        
+        # Save summary results to file
+        timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
+        results_dir = os.path.join(os.path.dirname(__file__), "results")
+        os.makedirs(results_dir, exist_ok=True)
+        
+        filename = os.path.join(results_dir, f"sector_summary_evaluation_results_{timestamp}.csv")
+        summary_df.to_csv(filename, index=False)
+        print(f"\nSummary results saved to: {os.path.abspath(filename)}")
+        
+        # Save full results (including summaries) to JSON for reference
+        json_filename = os.path.join(results_dir, f"sector_summary_evaluation_full_{timestamp}.json")
+        with open(json_filename, 'w') as f:
+            json.dump(results, f, indent=2, default=str)
+        print(f"Full results saved to: {os.path.abspath(json_filename)}")
+    else:
+        print("No summary results to display or save.")
 
 if __name__ == "__main__":
     # Run the evaluation
