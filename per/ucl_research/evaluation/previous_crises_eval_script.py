@@ -1,5 +1,3 @@
-# previous_crises_eval.py
-
 import json
 import asyncio
 import os
@@ -16,7 +14,6 @@ from per.ucl_research.ops_learning_summary4 import PreviousCrisesTask, BaseAITas
 from per.ucl_research.ifrc_client import IFRCAPIClient
 from per.ucl_research.rapid_response_parser import RapidResponseCapacityParser
 
-# Configuration: Add your country/disaster type combinations here
 # Each tuple contains (country_id, disaster_type_id)
 COUNTRY_DISASTER_COMBINATIONS = [
     (93, 12),
@@ -225,6 +222,7 @@ EVALUATION_PROMPT_TEMPLATE = (
     "Summary to evaluate:\n{summary}\n"
 )
 
+
 def get_geval_score(task_instance: BaseAITask, criteria: str, steps: str, document: str, summary: str, metric_name: str):
     prompt = EVALUATION_PROMPT_TEMPLATE.format(
         criteria=criteria, steps=steps, metric_name=metric_name, document=document, summary=summary
@@ -236,38 +234,39 @@ def get_geval_score(task_instance: BaseAITask, criteria: str, steps: str, docume
     return int(match.group(0)) if match else None
 
 async def evaluate_single_combination(country_id: int, disaster_type_id: int) -> Optional[Dict]:
-    """Evaluate a single country/disaster type combination and return the results"""
     print(f"\n--- Processing Country {country_id}, Disaster Type {disaster_type_id} ---")
     
     document, summary = await get_previous_crises_data(country_id, disaster_type_id)
-    
     if not document or not summary:
         print(f"Skipping combination - no data available")
         return None
     
     print(f"Generated previous crises analysis for Country {country_id}, Disaster Type {disaster_type_id}")
     
-    # Parse the JSON summary to extract individual insights
+    # Parse the JSON summary
     try:
         insights_data = json.loads(summary)
         print(f"  Found {len(insights_data)} individual insights to evaluate")
     except json.JSONDecodeError:
-        print(f"  Error parsing summary JSON, treating as single summary")
         insights_data = [{"insight": summary, "title": "Single Summary"}]
     
-    evaluation_metrics = {
+    # Metrics that are evaluated per-insight
+    per_insight_metrics = {
         "Relevance": (INSIGHT_RELEVANCY_SCORE_CRITERIA, INSIGHT_RELEVANCY_SCORE_STEPS),
         "Coherence": (COHERENCE_SCORE_CRITERIA, COHERENCE_SCORE_STEPS),
         "Fluency": (FLUENCY_SCORE_CRITERIA, FLUENCY_SCORE_STEPS),
         "RR Question Relevance": (RR_QUESTION_RELEVANCY_SCORE_CRITERIA, RR_QUESTION_RELEVANCY_SCORE_STEPS),
+    }
+    
+    # Metrics that are evaluated on the whole summary
+    summary_level_metrics = {
         "Uniqueness": (UNIQUENESS_SCORE_CRITERIA, UNIQUENESS_SCORE_STEPS),
     }
     
     task_instance = BaseAITask()
     
-    # Evaluate each insight individually
+    # Evaluate each insight individually for per-insight metrics
     individual_insight_scores = []
-    
     for i, insight in enumerate(insights_data):
         insight_text = insight.get("insight", str(insight))
         insight_title = insight.get("title", f"Insight {i+1}")
@@ -275,7 +274,7 @@ async def evaluate_single_combination(country_id: int, disaster_type_id: int) ->
         print(f"\n    --- Evaluating Insight {i+1}: {insight_title[:50]}... ---")
         
         insight_scores = {}
-        for eval_type, (criteria, steps) in evaluation_metrics.items():
+        for eval_type, (criteria, steps) in per_insight_metrics.items():
             score_value = get_geval_score(task_instance, criteria, steps, document, insight_text, eval_type)
             score_num = score_value if isinstance(score_value, int) else 0
             insight_scores[eval_type] = score_num
@@ -288,115 +287,119 @@ async def evaluate_single_combination(country_id: int, disaster_type_id: int) ->
             "scores": insight_scores
         })
     
-    # Calculate average scores across all insights
-    avg_scores = {}
+    # Calculate average scores for per-insight metrics
+    avg_per_insight_scores = {}
     if individual_insight_scores:
-        for metric in evaluation_metrics.keys():
+        for metric in per_insight_metrics.keys():
             metric_scores = [insight["scores"][metric] for insight in individual_insight_scores]
-            avg_scores[metric] = sum(metric_scores) / len(metric_scores)
-        
-        print(f"\n    --- AVERAGE SCORES ACROSS {len(individual_insight_scores)} INSIGHTS ---")
-        for metric, avg_score in avg_scores.items():
-            print(f"      {metric}: {avg_score:.2f}/5")
+            avg_per_insight_scores[metric] = sum(metric_scores) / len(metric_scores)
+    
+    # Evaluate summary-level metrics (like Uniqueness) on the whole summary
+    summary_level_scores = {}
+    print(f"\n    --- Evaluating Summary-Level Metrics ---")
+    for eval_type, (criteria, steps) in summary_level_metrics.items():
+        score_value = get_geval_score(task_instance, criteria, steps, document, summary, eval_type)
+        score_num = score_value if isinstance(score_value, int) else 0
+        summary_level_scores[eval_type] = score_num
+        print(f"      {eval_type}: {score_num}/5")
+    
+    # Combine all scores
+    all_scores = {**avg_per_insight_scores, **summary_level_scores}
     
     results = {
         "country_id": country_id,
         "disaster_type_id": disaster_type_id,
-        "avg_scores": avg_scores,
+        "avg_scores": all_scores,
         "individual_insights": individual_insight_scores,
-        "summary": summary
+        "summary": summary,
+        "evaluation_notes": {
+            "per_insight_metrics": list(per_insight_metrics.keys()),
+            "summary_level_metrics": list(summary_level_metrics.keys())
+        }
     }
-    
     return results
 
 async def evaluate_multiple_combinations(combinations: List[Tuple[int, int]]) -> List[Dict]:
-    """Evaluate multiple country/disaster type combinations and return all results"""
     print(f"Starting evaluation of {len(combinations)} country/disaster type combinations...")
-    
     all_results = []
     for i, (country_id, disaster_type_id) in enumerate(combinations, 1):
         print(f"\nProgress: {i}/{len(combinations)}")
         result = await evaluate_single_combination(country_id, disaster_type_id)
         if result:
             all_results.append(result)
-    
     return all_results
 
 def create_summary_dataframe(results: List[Dict]) -> pd.DataFrame:
-    """Create a summary DataFrame from all evaluation results"""
     if not results:
         return pd.DataFrame()
     
-    # Create detailed results DataFrame with average scores
     detailed_data = []
     for result in results:
         row = {
             "Country ID": result["country_id"],
             "Disaster Type ID": result["disaster_type_id"]
         }
+        
+        # Add all average scores
         row.update(result["avg_scores"])
+        
         detailed_data.append(row)
     
     detailed_df = pd.DataFrame(detailed_data)
     
-    # Create summary statistics DataFrame
     if len(results) > 1:
-        # Overall averages across all combinations
-        overall_stats = detailed_df[['Relevance', 'Coherence', 'Fluency', 'RR Question Relevance', 'Uniqueness']].mean().round(2)
+        # Calculate overall averages for all numeric score columns
+        score_columns = [col for col in detailed_df.columns if col not in 
+                        ["Country ID", "Disaster Type ID"]]
         
-        print("\n=== OVERALL AVERAGES ===")
-        print(overall_stats)
+        if score_columns:
+            overall_stats = detailed_df[score_columns].mean().round(2)
+            print("\n=== OVERALL AVERAGES ===")
+            print(overall_stats)
     
     return detailed_df
 
 async def main():
-    """Main function to run the evaluation"""
     if not COUNTRY_DISASTER_COMBINATIONS:
-        print("No country/disaster type combinations specified in COUNTRY_DISASTER_COMBINATIONS list!")
-        print("Please add combinations to the COUNTRY_DISASTER_COMBINATIONS list at the top of the script.")
+        print("No country/disaster type combinations specified!")
         return
     
-    print(f"Evaluating {len(COUNTRY_DISASTER_COMBINATIONS)} country/disaster type combinations for Previous Crises...")
-    for country_id, disaster_type_id in COUNTRY_DISASTER_COMBINATIONS:
-        print(f"  - Country {country_id}, Disaster Type {disaster_type_id}")
+    print(f"Evaluating {len(COUNTRY_DISASTER_COMBINATIONS)} combinations...")
+    print("\n=== EVALUATION APPROACH ===")
+    print("Per-Insight Metrics: Relevance, Coherence, Fluency, RR Question Relevance")
+    print("Summary-Level Metrics: Uniqueness (evaluated on entire summary)")
+    print("=" * 50)
     
-    # Evaluate all combinations
     results = await evaluate_multiple_combinations(COUNTRY_DISASTER_COMBINATIONS)
-    
     if not results:
         print("No combinations were successfully evaluated!")
         return
     
-    # Create and display results
     detailed_df = create_summary_dataframe(results)
-    
     print("\n=== DETAILED RESULTS ===")
     print(detailed_df)
     
-    # Save results to file
+    # Save results
     timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
     results_dir = os.path.join(os.path.dirname(__file__), "results")
     os.makedirs(results_dir, exist_ok=True)
     
-    filename = os.path.join(results_dir, f"previous_crises_evaluation_results_{timestamp}.csv")
-    detailed_df.to_csv(filename, index=False)
-    print(f"\nResults saved to: {os.path.abspath(filename)}")
+    # Save CSV with detailed results
+    csv_filename = os.path.join(results_dir, f"previous_crises_evaluation_results_{timestamp}.csv")
+    detailed_df.to_csv(csv_filename, index=False)
+    print(f"\nDetailed results saved to: {os.path.abspath(csv_filename)}")
     
-    # Save full results (including summaries) to JSON
+    # Save JSON with full evaluation data
     json_filename = os.path.join(results_dir, f"previous_crises_evaluation_full_{timestamp}.json")
     with open(json_filename, 'w') as f:
         json.dump(results, f, indent=2, default=str)
-    print(f"Full results saved to: {os.path.abspath(json_filename)}")
+    print(f"Full evaluation data saved to: {os.path.abspath(json_filename)}")
     
-    # Print summary statistics
-    total_combinations = len(COUNTRY_DISASTER_COMBINATIONS)
-    successful_combinations = len(results)
-    
-    print(f"\n=== EVALUATION SUMMARY ===")
-    print(f"Total Combinations: {total_combinations}")
-    print(f"Successfully Evaluated: {successful_combinations}")
-    print(f"Success Rate: {(successful_combinations/total_combinations)*100:.1f}%")
+    # Print summary of evaluation approach
+    print(f"\n=== EVALUATION COMPLETE ===")
+    print(f"Processed {len(results)} country/disaster type combinations")
+    print("Uniqueness is now evaluated on the entire summary rather than per-insight")
+    print("This provides a more holistic assessment of content uniqueness across all insights")
 
 if __name__ == "__main__":
-    # Run the evaluation
     asyncio.run(main())

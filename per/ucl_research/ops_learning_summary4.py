@@ -2242,7 +2242,7 @@ class RRCapacityTask(BaseAITask):
         
         for code in appeal_codes_in_response:
             if code not in appeal_codes_in_sources:
-                return "Not enough source is available to answer this question"
+                return "There are not enough sources available to answer this question."
                 
         return response
 
