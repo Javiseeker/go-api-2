@@ -399,7 +399,6 @@ async def main():
     print(f"\n=== EVALUATION COMPLETE ===")
     print(f"Processed {len(results)} country/disaster type combinations")
     print("Uniqueness is now evaluated on the entire summary rather than per-insight")
-    print("This provides a more holistic assessment of content uniqueness across all insights")
 
 if __name__ == "__main__":
     asyncio.run(main())

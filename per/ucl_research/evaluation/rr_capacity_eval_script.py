@@ -13,24 +13,9 @@ from per.ucl_research.ops_learning_summary4 import RRCapacityTask, BaseAITask
 from per.ucl_research.rapid_response_parser import RapidResponseCapacityParser
 from per.ucl_research.ifrc_client import IFRCAPIClient
 
-# Configuration: Add your country/disaster type combinations here
 # Each tuple contains (country_id, disaster_type_id)
 COUNTRY_DISASTER_COMBINATIONS = [
-    (93, 12),
-    (123, 2),
-    (4, 15),
-    (47, 12),
-    (61, 12),
-    (70, 21),
-    (77, 15),
-    (80, 6),
-    (81, 20),
-    (87, 62),
-    (101, 7),
     (136, 1),
-    (176, 5),
-    (84, 12),
-    (157, 5),
 ]
 
 async def get_rr_capacity_data(country_id: int, disaster_type_id: int, question_index: int = 0):
@@ -172,11 +157,11 @@ async def get_rr_capacity_data(country_id: int, disaster_type_id: int, question_
 
 RELEVANCY_SCORE_CRITERIA_RR = """
 Relevance (1-5): The summary must directly answer the 'Critical Question' using only the information provided in the source document.
-- A score of 5 means the summary provides a clear, direct answer to the capacity question, citing specific evidence about response capabilities, resources, or operational readiness from the source text.
+- A score of 5 means the summary provides a clear, direct answer to the capacity question, citing specific evidence about response capabilities, resources, or operational readiness from the source text, OR correctly concludes that the source document does not contain enough information to assess the specific capacity question.
 - A score of 3 means the summary attempts to answer the capacity question but is somewhat indirect or misses key evidence about response capabilities from the source.
 - A score of 1 means the summary fails to address the 'Critical Question' about response capacity at all.
-- NOTE: A high score is also appropriate if the summary correctly concludes that the source document does not contain enough information to assess the specific capacity question.
 """
+
 RELEVANCY_SCORE_STEPS_RR = """
 1. First, identify the 'Critical Question' being asked about humanitarian response capacity.
 2. Read the summary and assess how well it answers that specific capacity question.
@@ -188,23 +173,21 @@ UNIQUENESS_SCORE_CRITERIA = """
 Uniqueness (1-5): The summary's points must be distinct and not repeat the same core idea, both within the summary and across other capacity questions.
 - A score of 5 means each bullet point presents a completely new, distinct finding that hasn't been mentioned in other capacity areas.
 - A score of 3 means there is some overlap within the summary or with other capacity questions, but most points are unique.
-- A score of 1 means multiple bullet points repeat the same argument or the same insights appear across multiple capacity areas.
-- NOTE: A high score is also appropriate if the summary correctly concludes that the source document does not contain enough information to assess the specific capacity question.
+- A score of 1 means multiple bullet points repeat the same argument, the same insights appear across multiple capacity areas, OR multiple questions use identical "insufficient information" responses without differentiation.
 """
 
 UNIQUENESS_SCORE_STEPS = """
 1. Read all the bullet points in the summary.
 2. For each bullet point, compare its core idea to the core ideas of all other bullet points.
 3. Identify if multiple bullet points are making the same fundamental point (e.g., "lack of coordination" and "poor collaboration").
-4. Assign a score based on how much unique information is presented.
+5. Assign a score based on how much unique information is presented and how well insufficient information conclusions are differentiated.
 """
 
 INSIGHTFULNESS_SCORE_CRITERIA = """
 Insightfulness (1-5): The capacity assessment summary must highlight findings that are meaningful, analytical, and useful for humanitarian response planning.
-- A score of 5 means the summary provides sharp, decision-relevant insights — it emphasizes the most important strengths, critical gaps, or operational risks, not just surface-level details.
+- A score of 5 means the summary provides sharp, decision-relevant insights — it emphasizes the most important strengths, critical gaps, or operational risks, not just surface-level details, OR correctly concludes that the source document does not contain enough information to provide deeper analytical insights.
 - A score of 3 means the summary includes some useful observations but also highlights minor, obvious, or less impactful points without strong analysis.
 - A score of 1 means the summary mostly repeats trivial facts or weak findings, adding little value for understanding response capacity.
-NOTE: A high score is also appropriate if the summary correctly concludes that the source document does not contain enough information to provide deeper analytical insights.
 """
 
 INSIGHTFULNESS_SCORE_STEPS = """
@@ -217,29 +200,32 @@ Assign an insightfulness score from 1 to 5 based on the depth and usefulness of 
 
 COHERENCE_SCORE_CRITERIA = """
 Coherence (1-5): The capacity assessment summary must be well-structured and present information in a logical order that builds a clear picture of response capabilities.
-- A score of 5 means the summary's points about response capacity are logical and well-organized creating a coherent assessment of capabilities.
+- A score of 5 means the summary's points about response capacity are logical and well-organized creating a coherent assessment of capabilities OR if the summary correctly concludes that the source document does not contain enough information to assess the specific capacity question.
 - A score of 3 means the capacity points are somewhat disorganized or the flow is slightly confusing, but still understandable.
 - A score of 1 means the summary is a jumble of unrelated or poorly structured points that don't form a clear capacity assessment.
-- NOTE: A high score is also appropriate if the summary correctly concludes that the source document does not contain enough information to assess the specific capacity question.
 """
+
 COHERENCE_SCORE_STEPS = """
 1. Read the summary's bullet points about response capacity.
 2. Assess if the points are presented in a logical sequence.
 3. Check for clarity and how well each point contributes to the overall capacity assessment.
 4. Assign a coherence score from 1 to 5 based on how well the capacity information flows and connects.
 """
+
 CONSISTENCY_SCORE_CRITERIA = """
 Consistency (1-5): The capacity assessment summary must be factually aligned with the source document. All claims about response capabilities, especially references to reports must be traceable to the source.
-- A score of 5 means all facts about response capabilities and references are identical to the source document.
+- A score of 5 means all facts about response capabilities and references are identical to the source document, OR correctly concludes that the source document does not contain enough information to assess the specific capacity question.
 - A score of 3 means there is a minor factual discrepancy about capabilities or a reference is slightly misrepresented.
 - A score of 1 means the summary contains significant factual errors about response capabilities or cites sources not present in the document.
 """
+
 CONSISTENCY_SCORE_STEPS = """
 1. Read the capacity assessment summary and the source document side-by-side.
 2. For every claim about response capabilities in the summary, find the supporting evidence in the source document.
 3. Pay close attention to report codes, dates, numbers, and specific details about response resources and readiness.
 4. Assign a consistency score from 1 to 5 based on factual accuracy of the capacity assessment.
 """
+
 FLUENCY_SCORE_CRITERIA = """
 Fluency (1-5): The quality of the capacity assessment summary in terms of grammar, spelling, and readability for humanitarian responders.
 - 5: Excellent. The summary has few or no grammatical errors and is easy to read. The language is professional and clear.
@@ -282,55 +268,108 @@ async def evaluate_single_combination(country_id: int, disaster_type_id: int) ->
     all_questions = parser._load_questions_data()
     print(f"Found {len(all_questions)} questions to evaluate for this combination.")
     
+    # Define per-question evaluation metrics (excluding Uniqueness)
+    per_question_metrics = {
+        "Relevance": (RELEVANCY_SCORE_CRITERIA_RR, RELEVANCY_SCORE_STEPS_RR),
+        "Coherence": (COHERENCE_SCORE_CRITERIA, COHERENCE_SCORE_STEPS),
+        "Consistency": (CONSISTENCY_SCORE_CRITERIA, CONSISTENCY_SCORE_STEPS),
+        "Fluency": (FLUENCY_SCORE_CRITERIA, FLUENCY_SCORE_STEPS),
+        "Insightfulness": (INSIGHTFULNESS_SCORE_CRITERIA, INSIGHTFULNESS_SCORE_STEPS),
+    }
+    
     all_scores = []
     task_instance = BaseAITask()
-
+    
+    # First, generate all insights for all questions
+    print(f"\n  --- Generating Insights for All Questions ---")
+    all_insights = []
+    all_documents = []
+    
     for i, question in enumerate(all_questions):
-        print(f"\n  --- Evaluating Question {i+1}/{len(all_questions)} ---")
-        print(f"  Question: {question.get('Critical Questions', 'Unknown')[:100]}...")
-        
+        print(f"    Generating insight for Question {i+1}/{len(all_questions)}...")
         try:
             document, summary, question_data = await get_rr_capacity_data(country_id, disaster_type_id, question_index=i)
-
-            if not (document and summary and question_data):
-                print(f"  Could not get data for question {i+1}. Skipping.")
-                continue
-
-            critical_question = question_data.get('Critical Questions') if question_data else 'Unknown'
-            full_document_for_eval = f"Critical Question to Answer:\n{critical_question}\n\n---\n\n{document}"
-            
-            evaluation_metrics = {
-                "Relevance": (RELEVANCY_SCORE_CRITERIA_RR, RELEVANCY_SCORE_STEPS_RR),
-                "Coherence": (COHERENCE_SCORE_CRITERIA, COHERENCE_SCORE_STEPS),
-                "Consistency": (CONSISTENCY_SCORE_CRITERIA, CONSISTENCY_SCORE_STEPS),
-                "Fluency": (FLUENCY_SCORE_CRITERIA, FLUENCY_SCORE_STEPS),
-                "Uniqueness": (UNIQUENESS_SCORE_CRITERIA, UNIQUENESS_SCORE_STEPS),
-                "Insightfulness": (INSIGHTFULNESS_SCORE_CRITERIA, INSIGHTFULNESS_SCORE_STEPS),
-            }
-
-            question_scores = {}
-            for eval_type, (criteria, steps) in evaluation_metrics.items():
-                score = get_geval_score(task_instance, criteria, steps, full_document_for_eval, summary, eval_type)
-                score_num = score if isinstance(score, int) else 0
-                question_scores[eval_type] = score_num
-                print(f"    {eval_type}: {score_num}/5")
-            
-            all_scores.append({
-                "country_id": country_id,
-                "disaster_type_id": disaster_type_id,
-                "question_index": i,
-                "critical_question": critical_question,
-                "scores": question_scores,
-                "summary": summary
-            })
-                
+            if document and summary and question_data:
+                all_insights.append({
+                    "question_index": i,
+                    "critical_question": question_data.get('Critical Questions', 'Unknown'),
+                    "summary": summary,
+                    "question_data": question_data
+                })
+                all_documents.append(document)
         except Exception as e:
-            print(f"  Error evaluating question {i+1}: {e}")
+            print(f"    Error generating insight for question {i+1}: {e}")
             continue
     
+    if not all_insights:
+        print(f"  No insights generated for any questions. Skipping combination.")
+        return None
+    
+    print(f"  Successfully generated {len(all_insights)} insights.")
+    
+    # Now evaluate each question individually for per-question metrics
+    print(f"\n  --- Evaluating Individual Questions ---")
+    for i, insight_data in enumerate(all_insights):
+        print(f"\n    --- Evaluating Question {i+1}/{len(all_insights)} ---")
+        print(f"    Question: {insight_data['critical_question'][:100]}...")
+        
+        critical_question = insight_data['critical_question']
+        summary = insight_data['summary']
+        document = all_documents[i]
+        
+        full_document_for_eval = f"Critical Question to Answer:\n{critical_question}\n\n---\n\n{document}"
+        
+        question_scores = {}
+        for eval_type, (criteria, steps) in per_question_metrics.items():
+            score = get_geval_score(task_instance, criteria, steps, full_document_for_eval, summary, eval_type)
+            score_num = score if isinstance(score, int) else 0
+            question_scores[eval_type] = score_num
+            print(f"      {eval_type}: {score_num}/5")
+        
+        all_scores.append({
+            "country_id": country_id,
+            "disaster_type_id": disaster_type_id,
+            "question_index": insight_data['question_index'],
+            "critical_question": critical_question,
+            "scores": question_scores,
+            "summary": summary
+        })
+    
+    # Now evaluate Uniqueness across the entire document
+    print(f"\n  --- Evaluating Overall Document Uniqueness ---")
+    
+    # Combine all insights into one document for uniqueness evaluation
+    complete_document_text = "\n\n".join([
+        f"Question {i+1}: {insight['critical_question']}\n{insight['summary']}"
+        for i, insight in enumerate(all_insights)
+    ])
+    
+    # Evaluate uniqueness on the complete document 
+    uniqueness_score = get_geval_score(
+        task_instance, 
+        UNIQUENESS_SCORE_CRITERIA, 
+        UNIQUENESS_SCORE_STEPS, 
+        "",
+        complete_document_text, 
+        "Uniqueness"
+    )
+    
+    uniqueness_score_num = uniqueness_score if isinstance(uniqueness_score, int) else 0
+    print(f"    Overall Document Uniqueness: {uniqueness_score_num}/5")
+    
+    # Add uniqueness score to all results
+    for result in all_scores:
+        result["scores"]["Uniqueness"] = uniqueness_score_num
+    
     if all_scores:
-        avg_score = sum(sum(qs.values()) for qs in [score["scores"] for score in all_scores]) / (len(all_scores) * 6)
-        print(f"\n  Combination average score: {avg_score:.2f}")
+        # Calculate average excluding uniqueness (since it's now the same for all questions)
+        per_question_avg = sum(
+            sum(qs[metric] for metric in per_question_metrics.keys()) 
+            for qs in [score["scores"] for score in all_scores]
+        ) / (len(all_scores) * len(per_question_metrics))
+        
+        print(f"\n  Combination average score (per-question metrics): {per_question_avg:.2f}")
+        print(f"  Overall document uniqueness: {uniqueness_score_num}/5")
     
     return all_scores
 
@@ -354,7 +393,7 @@ def create_summary_dataframe(results: List[Dict]) -> pd.DataFrame:
     
     # Create summary statistics DataFrame - only country/disaster combinations with average scores
     if len(results) > 1:
-        # Group by combination and calculate averages for all five metrics
+        # Group by combination and calculate averages for all six metrics
         detailed_df = pd.DataFrame([
             {
                 "Country ID": result["country_id"],
@@ -370,8 +409,10 @@ def create_summary_dataframe(results: List[Dict]) -> pd.DataFrame:
             for result in results
         ])
         
-        # Group by combination and calculate averages
-        combination_stats = detailed_df.groupby(['Country ID', 'Disaster Type ID'])[['Relevance', 'Coherence', 'Consistency', 'Fluency', 'Uniqueness', 'Insightfulness']].mean().round(2)
+        # Group by combination and calculate averages for the specified metrics
+        combination_stats = detailed_df.groupby(['Country ID', 'Disaster Type ID'])[
+            ['Relevance', 'Coherence', 'Consistency', 'Fluency', 'Uniqueness', 'Insightfulness']
+        ].mean().round(2)
         
         # Overall averages across all combinations and questions
         overall_stats = detailed_df[['Relevance', 'Coherence', 'Consistency', 'Fluency', 'Uniqueness', 'Insightfulness']].mean().round(2)
@@ -394,6 +435,11 @@ async def main():
         return
     
     print(f"Evaluating {len(COUNTRY_DISASTER_COMBINATIONS)} country/disaster type combinations for RR Capacity...")
+    print("\n=== EVALUATION APPROACH ===")
+    print("Per-Question Metrics: Relevance, Coherence, Consistency, Fluency, Insightfulness")
+    print("Document-Level Metric: Uniqueness (evaluated across all questions)")
+    print("=" * 60)
+    
     for country_id, disaster_type_id in COUNTRY_DISASTER_COMBINATIONS:
         print(f"  - Country {country_id}, Disaster Type {disaster_type_id}")
     
@@ -437,6 +483,9 @@ async def main():
         print(f"Successfully Evaluated: {successful_combinations}")
         print(f"Total Questions Evaluated: {total_questions}")
         print(f"Success Rate: {(successful_combinations/total_combinations)*100:.1f}%")
+        print(f"\n=== EVALUATION APPROACH ===")
+        print("Uniqueness is now evaluated on the complete document across all questions")
+        print("This provides a holistic assessment of content uniqueness across all capacity areas")
     else:
         print("No summary results to display or save.")
 
