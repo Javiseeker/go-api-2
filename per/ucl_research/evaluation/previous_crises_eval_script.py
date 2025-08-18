@@ -144,8 +144,8 @@ async def get_previous_crises_data(country_id: int, disaster_type_id: int):
     return document, summary_json
 
 # --- G-Eval Setup ---
-INSIGHT_RELEVANCY_SCORE_CRITERIA = """
-Relevance(1-5) - selection of important content from the source. 
+CONSISTENCY_SCORE_CRITERIA = """
+Consistency(1-5) - selection of important content from the source. 
 The summary should only be based of the information from the source document and the learning ids should match. 
 Annotators were instructed to penalize summaries which contained redundancies and excess information.
 - A score of 5 means all insights in the summary are relevant to the source document. There is no hallucination.
@@ -153,21 +153,21 @@ Annotators were instructed to penalize summaries which contained redundancies an
 - A score of 1 means that none of the insights in the summary are backed up by the source document and there is a lot of hallucination.
 """
 
-INSIGHT_RELEVANCY_SCORE_STEPS = """
+CONSISTENCY_SCORE_STEPS = """
 1. Read the summary and the source document carefully.
 2. Compare the summary to the source document and identify the main points of the article.
 3. Assess how well the summary covers the main points of the article, and how much irrelevant or redundant information it contains.
-4. Assign a relevance score from 1 to 5.
+4. Assign a Consistency score from 1 to 5.
 """
 
-RR_QUESTION_RELEVANCY_SCORE_CRITERIA= """
+RELEVANCY_SCORE_CRITERIA= """
 RR questions should be relevant to the insight it is based on. 
 - A score of 5 means that all RR questions are relevant to the insight it is based on. 
 - A score of 3 means that some RR questions are not relevant to the insight it is based on. 
 - A score of 1 means that none of the RR questions are relevant to the insight it is based on. 
 """
 
-RR_QUESTION_RELEVANCY_SCORE_STEPS = """
+RELEVANCY_SCORE_STEPS = """
 1. Read the summary and the source document carefully.
 2. Compare the summary to the source document and identify the main points of the article.
 3. Assess how well the RR questions are relevant to the insight it is based on.
@@ -252,10 +252,10 @@ async def evaluate_single_combination(country_id: int, disaster_type_id: int) ->
     
     # Metrics that are evaluated per-insight
     per_insight_metrics = {
-        "Relevance": (INSIGHT_RELEVANCY_SCORE_CRITERIA, INSIGHT_RELEVANCY_SCORE_STEPS),
+        "Consistency": (CONSISTENCY_SCORE_CRITERIA, CONSISTENCY_SCORE_STEPS),
         "Coherence": (COHERENCE_SCORE_CRITERIA, COHERENCE_SCORE_STEPS),
         "Fluency": (FLUENCY_SCORE_CRITERIA, FLUENCY_SCORE_STEPS),
-        "RR Question Relevance": (RR_QUESTION_RELEVANCY_SCORE_CRITERIA, RR_QUESTION_RELEVANCY_SCORE_STEPS),
+        "Relevancy": (RELEVANCY_SCORE_CRITERIA, RELEVANCY_SCORE_STEPS),
     }
     
     # Metrics that are evaluated on the whole summary
