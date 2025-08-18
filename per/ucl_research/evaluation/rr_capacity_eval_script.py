@@ -165,8 +165,7 @@ Relevance (1-5): The summary must directly answer the 'Critical Question' using 
 RELEVANCY_SCORE_STEPS_RR = """
 1. First, identify the 'Critical Question' being asked about humanitarian response capacity.
 2. Read the summary and assess how well it answers that specific capacity question.
-3. Verify that any evidence about response capabilities, resources, or operational readiness mentioned in the summary are present in the source document ('Events Context' or 'Operational Learning Context').
-4. Assign a relevance score from 1 to 5 based on how directly and accurately the summary addresses the capacity question using ONLY the provided sources.
+3. Assign a relevance score from 1 to 5 based on how directly and accurately the summary addresses the capacity question using ONLY the provided sources.
 """
 
 UNIQUENESS_SCORE_CRITERIA = """
