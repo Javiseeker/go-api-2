@@ -2615,7 +2615,7 @@ class PreviousCrisesTask(BaseAITask):
         ]
 
         # STEP 3: Combine both sets of learning and pad out to up to 6 items
-        combined_learning = (primary_labeled + secondary_labeled)[:6]
+        combined_learning = (primary_labeled + secondary_labeled)[:20]
 
         if not combined_learning:
             return []
